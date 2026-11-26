@@ -106,6 +106,9 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .si .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
 .si .c{font-size:11px;color:var(--dim)}
 .si .x{opacity:.5;color:var(--mut);padding:6px;margin:-4px -4px -4px 0;border-radius:8px}.si:hover .x{opacity:1}.si .x:hover{color:var(--red)}
+.npov{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);padding:16px}
+.npbox{max-width:460px;width:100%;padding:22px;border-radius:26px;background:var(--solid,#1b1d22)}.npbox h3{margin:0 0 8px;font-size:18px}.npbox p{margin:0 0 14px;color:var(--mut);line-height:1.5;font-size:13.5px}
+.nprow{display:flex;flex-wrap:wrap;gap:8px}.npk{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--mut)}
 .projrow{display:flex;gap:6px;margin:6px 0 4px}.projrow select{flex:1;min-width:0;background:var(--field);border:1px solid var(--gb2);border-radius:12px;padding:7px 10px;color:var(--tx);font:inherit;font-size:12.5px;outline:0}
 .projnew{display:flex;gap:6px;margin:4px 0 6px}.projnew[hidden]{display:none}.projnew input{flex:1;min-width:0;background:var(--field);border:1px solid var(--gb2);border-radius:12px;padding:7px 10px;color:var(--tx);font:inherit;font-size:12.5px;outline:0}
 .si .x.arm{opacity:1;background:var(--red);color:#fff;padding:3px 9px;font-size:11px;font-weight:700;margin:0}
@@ -771,10 +774,29 @@ function setRunning(r){
   $('#escBtn').style.display=r?'inline-flex':'none';
   const sl=S.sessions.find(x=>x.id===S.sid);renderSide();
 }
+function askNewProject(){return new Promise(res=>{
+  let pref='';try{pref=localStorage.getItem('ac-newproj')||''}catch(e){}
+  if(pref==='always'){res('new');return}
+  const o=document.createElement('div');o.className='npov';
+  o.innerHTML=`<div class="npbox glass"><h3>Start a new project for this?</h3><p>This folder already has files from an earlier task. If your new idea is something different, the AI could copy or mix up the old one. A new project starts completely empty, with nothing from your other projects.</p><div class="nprow"><button class="btn gold" data-a="new">New project (recommended)</button><button class="btn ghost" data-a="continue">Continue in this project</button></div><label class="npk"><input type="checkbox" class="npRem"> Always start a new project for a new task</label></div>`;
+  document.body.appendChild(o);
+  const done=a=>{if(a==='new'&&o.querySelector('.npRem').checked){try{localStorage.setItem('ac-newproj','always')}catch(e){}}o.remove();document.removeEventListener('keydown',esc_);res(a)};
+  const esc_=e=>{if(e.key==='Escape')done('cancel')};document.addEventListener('keydown',esc_);
+  o.addEventListener('click',e=>{if(e.target===o)done('cancel')});
+  o.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>done(b.dataset.a));
+})}
 async function send(){
   if(S.runId){await api('/api/stop',{run:S.runId});toast('Stopping...');return}
   const ta=$('#ta');const text=ta.value.trim();if(!text)return;
   if(!Object.values(S.cfg.providers).some(p=>p.has_key)&&S.cfg.no_key_fallback===false){openWelcome();return}
+  if(!S.sid){ /* a NEW task in a folder that already has files: never let the AI mix it with the old project */
+    const tr=await api('/api/tree');
+    if((tr.items||[]).length>0){
+      const c=await askNewProject();
+      if(c==='cancel')return;
+      if(c==='new'){const nm=text.replace(/[^\w ]+/g,' ').trim().split(/\s+/).slice(0,4).join(' ')||'project';const pr=await api('/api/project/new',{name:nm});if(pr.error){toast(pr.error);return}S.cfg=pr.config;S.usage=pr.usage;$('#wspath').textContent=S.cfg.workspace;loadProjects();loadTree();renderSide();toast('New empty project "'+nm+'": the AI starts fresh')}
+    }
+  }
   const r=await api('/api/run',{session:S.sid,text,tier:S.forced});
   if(r.error){toast(r.error);return}
   ta.value='';autoGrow();S.sid=r.session;S.cur=null;attach(r.run,0);
