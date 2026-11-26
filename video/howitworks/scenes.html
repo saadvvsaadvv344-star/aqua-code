@@ -1,0 +1,320 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>How Aqua Code works</title>
+<style>
+:root{--tx:#f2f3f5;--mut:#9ea3ad;--dim:#6b7078;--silver:#e8eaee;--teal:#8fb8b2;--violet:#a79fc2;--green:#6ee7a8;--red:#ff6b6b;--amber:#ffb454}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#000;overflow:hidden}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#07080a;color:var(--tx);font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#bg,#scenes{position:absolute;inset:0}
+.blob{position:absolute;border-radius:50%;opacity:.55;will-change:transform}
+.scene{position:absolute;inset:0;opacity:0;transform-origin:50% 50%;visibility:hidden}
+.abs{position:absolute}
+.g{position:absolute;background:linear-gradient(145deg,rgba(255,255,255,.11),rgba(255,255,255,.025));border:1.5px solid rgba(255,255,255,.15);border-radius:38px;
+  box-shadow:inset 2px 2px 0 rgba(255,255,255,.34),inset -1px -1px 0 rgba(255,255,255,.08),inset 0 0 40px rgba(255,255,255,.03),0 44px 100px -24px rgba(0,0,0,.75);
+  backdrop-filter:blur(28px) saturate(170%)}
+.g::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(500px circle at 15% -5%,rgba(255,255,255,.22),transparent 60%)}
+.ic{display:inline-flex;align-items:center;justify-content:center}.ic svg{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.h1{position:absolute;font-weight:700;letter-spacing:-2px;line-height:1.02;font-size:104px;white-space:nowrap}
+.h1 em{font-style:normal;background:linear-gradient(120deg,#fff,#aeb4be);-webkit-background-clip:text;background-clip:text;color:transparent}
+.chip{display:inline-flex;align-items:center;gap:12px;padding:8px 22px;border-radius:999px;font-weight:650;font-size:28px;border:2px solid currentColor;background:rgba(255,255,255,.06)}
+.chip i{width:14px;height:14px;border-radius:50%;background:currentColor;box-shadow:0 0 16px currentColor}
+.mono{font-family:Consolas,"Cascadia Mono",monospace}
+.pill{display:inline-flex;align-items:center;gap:14px;padding:14px 28px;border-radius:999px;font-size:32px;font-weight:600;background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.03));border:1.5px solid rgba(255,255,255,.17);box-shadow:inset 1.5px 1.5px 0 rgba(255,255,255,.35),0 18px 40px -12px rgba(0,0,0,.6)}
+.dot{width:16px;height:16px;border-radius:50%;background:var(--green);box-shadow:0 0 18px var(--green);flex:none}
+.lbl{font-size:23px;letter-spacing:3px;color:var(--dim);font-weight:600}
+.row{display:flex;align-items:center;gap:18px}
+.bar{position:relative;height:16px;border-radius:99px;background:rgba(0,0,0,.4);overflow:hidden;box-shadow:inset 0 2px 6px rgba(0,0,0,.5)}.bar>i{display:block;height:100%;border-radius:inherit}
+#nav{position:absolute;left:0;right:0;top:30px;display:flex;justify-content:center;gap:10px;opacity:0}
+.nv{display:flex;align-items:center;gap:10px;padding:8px 18px;border-radius:999px;font-size:21px;font-weight:600;color:#7c818b;border:1.5px solid transparent;white-space:nowrap}
+.nv b{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:16px;background:rgba(255,255,255,.08)}
+.nv.on{color:#fff;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);box-shadow:0 0 30px rgba(255,255,255,.12)}
+.nv.on b{background:#fff;color:#111}
+.nv.past{color:#a9aeb7}
+#cap{position:absolute;left:0;right:0;bottom:50px;display:flex;justify-content:center;pointer-events:none}
+.capl{position:absolute;bottom:0;max-width:1640px;text-align:center;font-size:40px;line-height:1.3;font-weight:600;letter-spacing:-.2px;padding:16px 38px;border-radius:30px;background:rgba(6,7,9,.6);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);opacity:0}
+.capl span{opacity:.42}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 120% at 50% 50%,transparent 55%,rgba(0,0,0,.55))}
+.ring{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.5)}
+</style></head>
+<body>
+<div id="stage">
+  <div id="bg"></div>
+  <div id="scenes"></div>
+  <div id="nav"></div>
+  <div id="cap"></div>
+  <div id="vig"></div>
+</div>
+<script>
+/* ======================= tiny deterministic timeline engine (every frame is a pure function of time) ======================= */
+const $=(s,r=document)=>r.querySelector(s);
+function mk(tag,cls,html,parent){const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;if(parent)parent.appendChild(e);return e}
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const E={out:t=>1-Math.pow(1-t,3),inout:t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,lin:t=>t,spring:t=>t>=1?1:1-Math.exp(-6.5*t)*Math.cos(11*t),quint:t=>1-Math.pow(1-t,5)};
+const P=(t,a,d,ease=E.out)=>ease(clamp((t-a)/d));
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function put(el,o){el.style.opacity=o.o===undefined?1:o.o;el.style.transform=`translate(${(o.x||0).toFixed(2)}px,${(o.y||0).toFixed(2)}px) scale(${o.sx===undefined?(o.s===undefined?1:o.s):o.sx},${o.sy===undefined?(o.s===undefined?1:o.s):o.sy}) rotate(${o.r||0}deg)`;if(o.b!==undefined)el.style.filter=o.b>.05?`blur(${o.b.toFixed(1)}px)`:'none'}
+function appear(el,t,a,d=.6,opt={}){const y=opt.y===undefined?34:opt.y,s0=opt.s===undefined?.93:opt.s,x=opt.x||0,p=P(t,a,d,opt.ease||E.out);put(el,{o:clamp(p*1.6),x:(1-p)*x,y:(1-p)*y,s:s0+(1-s0)*p,b:(1-p)*(opt.blur===undefined?7:opt.blur)});return p}
+const SVG={
+check:'<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+file:'<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/></svg>',
+term:'<svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></svg>',
+edit:'<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg>',
+bolt:'<svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>',
+arrow:'<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+folder:'<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>',
+lock:'<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+eye:'<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
+search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+layers:'<svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>',
+shield:'<svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>',
+key:'<svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 9-9M16 7l3 3M14 9l2 2"/></svg>',
+cube:'<svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>',
+refresh:'<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/></svg>'};
+const ic=(n,size)=>`<span class="ic" style="font-size:${size||40}px">${SVG[n]}</span>`;
+
+let T=null,SC=[],WIN=[],NAVEL=[];
+const EV=k=>T.ev.p[String(k)];
+function newScene(){return mk('div','scene','',$('#scenes'))}
+function card(R,x,y,w,h,html,css){const c=mk('div','g',html||'',R);c.style.cssText+=`left:${x}px;top:${y}px;width:${w}px;height:${h}px;${css||''}`;return c}
+function head(R,html){const h=mk('div','h1',html,R);h.style.cssText+='left:140px;top:104px;font-size:66px';return h}
+const pulse=(t,a,d)=>Math.sin(Math.PI*clamp((t-a)/d));
+
+/* ======================= backdrop ======================= */
+const BL=[['#8a8f99',900,-200,-260,.0],['#4b5563',820,1200,160,1.7],['#a0a4ad',760,500,720,3.1],['#374151',620,1500,640,4.4]];
+const blobs=BL.map(b=>{const e=mk('div','blob','',$('#bg'));e.style.cssText+=`width:${b[1]}px;height:${b[1]}px;background:radial-gradient(circle,${b[0]},transparent 68%)`;return e});
+const gridEl=mk('div','',null,$('#bg'));gridEl.style.cssText='position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px);background-size:72px 72px;-webkit-mask-image:radial-gradient(75% 75% at 50% 50%,#000,transparent)';
+function updBg(t){blobs.forEach((e,i)=>{const b=BL[i];e.style.transform=`translate(${b[2]+Math.sin(t*.22+b[4])*130}px,${b[3]+Math.cos(t*.17+b[4])*90}px)`});gridEl.style.backgroundPosition=`${(t*9)%72}px ${(t*6)%72}px`}
+
+/* ======================= scene 0: title ======================= */
+function scene0(){
+  const R=newScene(),ev=T.ev.intro;
+  const rings=[0,1,2,3].map(()=>mk('div','ring','',R));
+  const logo=mk('img','abs','',R);logo.src='logo.png';logo.style.cssText+='left:810px;top:230px;width:300px;height:300px;filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))';
+  const h=mk('div','h1','Aqua <em>Code</em>',R);h.style.cssText+='left:0;right:0;top:560px;text-align:center;font-size:150px;letter-spacing:-5px';
+  const sub=mk('div','abs','HOW IT WORKS',R);sub.style.cssText+='left:0;right:0;top:742px;text-align:center;font-size:38px;letter-spacing:14px;color:var(--mut);font-weight:600';
+  const sub2=mk('div','abs','From a messy request to a finished project',R);sub2.style.cssText+='left:0;right:0;top:806px;text-align:center;font-size:34px;color:var(--dim)';
+  return{el:R,upd(t){
+    rings.forEach((r,i)=>{const p=((t*.42+i/4)%1),rad=160+p*820;r.style.cssText=`left:${960-rad}px;top:${380-rad}px;width:${rad*2}px;height:${rad*2}px;opacity:${(1-p)*.22*P(t,ev.drop[0],.5)}`});
+    const lp=P(t,ev.drop[0]-.2,1.0,E.spring);put(logo,{o:clamp(lp*2),y:(1-lp)*-160,s:.6+.4*lp,b:(1-clamp(lp*1.5))*10});
+    appear(h,t,ev.text,.9,{y:40});appear(sub,t,ev.text+.5,.8,{y:20});appear(sub2,t,ev.text+1.0,.8,{y:20})}}}
+
+/* ======================= scene 1: understand first ======================= */
+function scene1(){
+  const R=newScene(),e=EV(1),msg='mak me a slime shdaer gmae, relly realistc, i can sqeeze it';
+  const hd=head(R,'Understand <em>first</em>');
+  const you=card(R,140,230,720,430,`<div class="lbl">YOU TYPE</div><div id="ty" class="mono" style="margin-top:28px;font-size:38px;line-height:1.5"></div>`,'padding:40px 46px');
+  const ty=$('#ty',you);
+  const mid=mk('div','abs',`<div style="width:130px;height:130px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,rgba(255,255,255,.2),rgba(255,255,255,.04));border:2px solid rgba(255,255,255,.35)">${ic('bolt',62)}</div><div style="margin-top:18px;font-size:24px;color:var(--mut);text-align:center;line-height:1.3">strongest<br>model</div>`,R);mid.style.cssText+='left:885px;top:340px;width:130px';
+  const a1=mk('div','abs',ic('arrow',44),R),a2=mk('div','abs',ic('arrow',44),R);a1.style.cssText+='left:826px;top:386px;color:#9ea3ad';a2.style.cssText+='left:1022px;top:386px;color:#9ea3ad';
+  const brief=card(R,1060,230,720,430,`<div class="lbl">CLEAR BRIEF</div><div id="bl" style="margin-top:26px;display:flex;flex-direction:column;gap:22px"></div>`,'padding:40px 46px');
+  const items=['Goal: a small WebGL shader game','Look: translucent, realistic jelly slime','Play: squish and poke it with the mouse','Output: one index.html, works offline'].map(s=>mk('div','row',`<span style="color:#6ee7a8">${ic('check',40)}</span><span style="font-size:34px;line-height:1.25">${s}</span>`,$('#bl',brief)));
+  const tag=mk('div','pill abs',`${ic('eye',34)} No guessing`,R);tag.style.cssText+='left:140px;top:700px;font-size:30px';
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});appear(you,t,e[0],.8,{y:60,ease:E.spring});
+    const k=Math.floor(P(t,e[1],e[2]-e[1],E.lin)*msg.length),caret=(t>e[1]&&t<e[3]+.6&&Math.floor(t*3)%2===0)?'<span style="display:inline-block;width:4px;height:40px;background:#fff;margin-left:4px;vertical-align:-6px"></span>':'';ty.innerHTML=esc(msg.slice(0,k))+caret;
+    const m=appear(mid,t,e[2]-.2,.6,{y:20,s:.8,ease:E.spring});mid.firstChild.style.boxShadow=`0 0 ${70*pulse(t,e[3],1.2)}px rgba(255,255,255,${.5*pulse(t,e[3],1.2)})`;
+    appear(a1,t,e[3]-.2,.5,{x:-20,y:0,s:1});appear(a2,t,e[3]+.3,.5,{x:-20,y:0,s:1});
+    appear(brief,t,e[4],.8,{y:60,ease:E.spring});items.forEach((it,i)=>appear(it,t,e[5+i],.5,{y:14,x:-24,s:1}));appear(tag,t,e[8]+.4,.6,{y:20,s:.9,ease:E.spring})}}}
+
+/* ======================= scene 2: cheapest model first ======================= */
+function scene2(){
+  const R=newScene(),e=EV(2);
+  const hd=head(R,'Cheapest model <em>first</em>');
+  const defs=[['Lite','Cheap and fast','#8fb8b2',140],['Standard','Balanced','#a79fc2',700],['Pro','Strongest','#e8eaee',1260]];
+  const cs=defs.map(d=>{const c=card(R,d[3],230,520,300,`<div class="chip" style="color:${d[2]}"><i></i>${d[0]}</div><div style="margin-top:28px;font-size:40px;font-weight:700">${d[1]}</div><div class="bar" style="margin-top:30px"><i style="width:100%;background:${d[2]};opacity:.5"></i></div><div class="st" style="margin-top:22px;font-size:28px;color:var(--mut)">ready</div>`,'padding:40px');return c});
+  const sts=cs.map(c=>$('.st',c));
+  const la=mk('div','pill abs',`${ic('arrow',32)} Everyday request starts here`,R);la.style.cssText+='left:140px;top:570px;font-size:28px';
+  const lb=mk('div','pill abs',`${ic('bolt',32)} Shader, 3D, game: starts here`,R);lb.style.cssText+='left:700px;top:570px;font-size:28px';
+  const pk=mk('div','chip',`${ic('refresh',28)} full conversation`,R);pk.style.cssText+='position:absolute;left:0;top:0;font-size:26px;color:#fff;background:rgba(20,22,26,.8)';
+  const sv=mk('div','pill abs',`${ic('check',32)} You only use the strong model when it is needed`,R);sv.style.cssText+='left:140px;top:726px;font-size:30px;color:#6ee7a8';
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});cs.forEach((c,i)=>appear(c,t,e[0]+.14*i,.7,{y:60,ease:E.spring}));
+    appear(la,t,e[1],.6,{y:20,s:.9,ease:E.spring});appear(lb,t,e[2],.6,{y:20,s:.9,ease:E.spring});
+    const f=P(t,e[3],.5,E.out);cs[0].style.borderColor=`rgba(255,107,107,${.7*f})`;cs[0].style.boxShadow=`inset 2px 2px 0 rgba(255,255,255,.34),0 0 ${60*f}px rgba(255,107,107,${.35*f}),0 44px 100px -24px rgba(0,0,0,.75)`;sts[0].textContent=f>.4?'stuck: failed twice':'ready';sts[0].style.color=f>.4?'#ff8f8f':'';
+    const mv=P(t,e[4],.9,E.inout);const px=400+(960-400)*mv,py=650-50*Math.sin(Math.PI*mv);put(pk,{x:px,y:py,o:clamp((t-e[4]+.1)*6)*(1-P(t,e[5]+.6,.5)),s:1});
+    const g=P(t,e[5],.6,E.spring);cs[1].style.borderColor=`rgba(110,231,168,${.65*g})`;cs[1].style.boxShadow=`inset 2px 2px 0 rgba(255,255,255,.34),0 0 ${80*g}px rgba(110,231,168,${.4*g}),0 44px 100px -24px rgba(0,0,0,.75)`;sts[1].textContent=g>.4?'takes over with the full conversation':'ready';sts[1].style.color=g>.4?'#6ee7a8':'';
+    appear(sv,t,e[5]+.5,.7,{y:20,s:.92,ease:E.spring})}}}
+
+/* ======================= scene 3: the agent loop ======================= */
+function scene3(){
+  const R=newScene(),e=EV(3);
+  const hd=head(R,'The agent <em>loop</em>');
+  const cx=600,cy=480,r=215;
+  const svg=mk('div','abs',`<svg width="700" height="620" viewBox="-350 -310 700 620" style="overflow:visible"><circle r="${r}" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="3" stroke-dasharray="4 14"/></svg>`,R);svg.style.cssText+=`left:${cx-350}px;top:${cy-310}px`;
+  const nodes=[['Think','bolt',-90],['Act','edit',0],['Read result','eye',90],['Check','check',180]].map(n=>{const a=n[2]*Math.PI/180;const el=mk('div','pill abs',`${ic(n[1],34)}${n[0]}`,R);el.style.cssText+=`left:0;top:0;font-size:30px;padding:14px 26px`;el._p=[cx+Math.cos(a)*r,cy+Math.sin(a)*r];return el});
+  const orb=mk('div','abs','',R);orb.style.cssText+='left:0;top:0;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;background:#fff;box-shadow:0 0 40px 10px rgba(255,255,255,.55)';
+  const trail=[1,2,3,4,5].map(i=>{const d=mk('div','abs','',R);d.style.cssText+=`left:0;top:0;width:${28-i*4}px;height:${28-i*4}px;margin:${-(28-i*4)/2}px 0 0 ${-(28-i*4)/2}px;border-radius:50%;background:#fff;opacity:${.5-i*.08}`;return d});
+  const tools=[['file','read_file'],['edit','write_file'],['edit','edit_file'],['term','run_command'],['search','search_code'],['eye','look_page']].map((d,i)=>{const p=mk('div','pill abs',`<span style="color:#9ea3ad">${ic(d[0],34)}</span><span class="mono" style="font-size:30px">${d[1]}</span>`,R);p.style.cssText+=`left:1180px;top:${210+i*92}px;width:580px;font-size:30px`;return p});
+  const w=3.0; // rad per second
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});appear(svg,t,e[0],.8,{y:0,s:.9});
+    nodes.forEach((n,i)=>{appear(n,t,e[0]+.1*i,.6,{y:0,s:.85,ease:E.spring});n.style.left=(n._p[0]-n.offsetWidth/2)+'px';n.style.top=(n._p[1]-n.offsetHeight/2)+'px'});
+    const on=clamp((t-e[0]-.4)*3),ang=-Math.PI/2+(t-e[0])*w;
+    put(orb,{x:cx+Math.cos(ang)*r,y:cy+Math.sin(ang)*r,o:on});trail.forEach((d,i)=>{const a=ang-(i+1)*.13;put(d,{x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r,o:on*(.5-(i+1)*.08)})});
+    let cur=-1;tools.forEach((p,i)=>{const ap=appear(p,t,e[1+i],.5,{x:50,y:0,s:.95});if(t>e[1+i])cur=i});
+    const last=e[6]+.6;const idx=t>last?Math.floor((t-last)/.55)%6:cur;tools.forEach((p,i)=>{const hot=(i===idx)&&t>e[1];p.style.borderColor=hot?'rgba(255,255,255,.7)':'rgba(255,255,255,.17)';p.style.background=hot?'linear-gradient(145deg,rgba(255,255,255,.28),rgba(255,255,255,.08))':''})}}}
+
+/* ======================= scene 4: tested recipes ======================= */
+function scene4(){
+  const R=newScene(),e=EV(4);
+  const hd=head(R,'Start from <em>tested recipes</em>');
+  const defs=[['Jelly shader','WebGL, no libraries',140],['3D scene','Lights, shadows, orbit',700],['Arcade game','Player, enemies, score',1260]];
+  const cs=defs.map(d=>card(R,d[2],220,520,330,`<div class="art" style="position:absolute;left:0;right:0;top:0;height:200px;overflow:hidden;border-radius:38px 38px 0 0"></div><div style="position:absolute;left:36px;bottom:70px;font-size:36px;font-weight:700">${d[0]}</div><div style="position:absolute;left:36px;bottom:26px;font-size:25px;color:var(--mut)">${d[1]}</div><div class="chip" style="position:absolute;right:26px;bottom:34px;font-size:21px;padding:3px 14px;color:#6ee7a8"><i></i>tested</div>`,''));
+  const arts=cs.map(c=>$('.art',c));
+  arts[0].innerHTML='<div class="jb" style="position:absolute;left:210px;top:40px;width:110px;height:110px;border-radius:30px;background:radial-gradient(circle at 32% 28%,#d6ffe9,#3fe39a 38%,#0b6a46);box-shadow:0 0 50px rgba(63,227,154,.45)"></div>';
+  arts[1].innerHTML='<div class="tk" style="position:absolute;left:190px;top:30px;width:140px;height:140px;border-radius:50%;border:34px solid #5ad1ff;box-shadow:0 0 40px rgba(90,209,255,.35),inset 0 0 20px rgba(0,0,0,.4)"></div><div style="position:absolute;left:160px;top:164px;width:200px;height:26px;border-radius:50%;background:rgba(0,0,0,.4);filter:blur(6px)"></div>';
+  arts[2].innerHTML='<svg class="ar" width="520" height="200" viewBox="0 0 520 200" style="position:absolute;left:0;top:0"><g class="en"></g><g class="bu"></g><path class="sh" d="M260 120 L282 168 L260 156 L238 168 Z" fill="#5ad1ff"/></svg>';
+  const jb=$('.jb',arts[0]),tk=$('.tk',arts[1]),en=$('.en',arts[2]),bu=$('.bu',arts[2]),sh=$('.sh',arts[2]);
+  const lay=mk('div','abs','',R);lay.style.cssText+='left:140px;top:590px;width:1640px';
+  const lt=mk('div','lbl','BUILD IN LAYERS, NEVER ONE GIANT FILE',R);lt.style.cssText+='position:absolute;left:146px;top:582px';
+  const ls=[['1','Working core','#8fb8b2'],['2','Features','#a79fc2'],['3','Polish','#e8eaee']].map((d,i)=>{const c=card(R,140+i*560,626,520,130,`<div class="row"><span style="width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:${d[2]};color:#101216;font-weight:800;font-size:28px">${d[0]}</span><span style="font-size:36px;font-weight:700">${d[1]}</span></div><div class="bar" style="margin-top:22px"><i class="fl" style="width:0;background:${d[2]}"></i></div>`,'padding:26px 34px;border-radius:32px');return c});
+  const fl=ls.map(c=>$('.fl',c));
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});cs.forEach((c,i)=>appear(c,t,e[1+i],.7,{y:60,ease:E.spring}));
+    jb.style.transform=`scale(${1+.14*Math.sin(t*7)*Math.exp(-((t*1.3)%3)*1.2)+.04*Math.sin(t*3)},${1-.12*Math.sin(t*7)*Math.exp(-((t*1.3)%3)*1.2)})`;
+    tk.style.transform=`rotate(${t*50}deg) scaleY(${.7+.3*Math.abs(Math.cos(t*1.2))})`;tk.style.borderColor=`hsl(${190+30*Math.sin(t)},80%,62%)`;
+    let g='';for(let i=0;i<5;i++){const y=((t*70+i*60)%220)-20,x=60+i*95+25*Math.sin(t+i);g+=`<circle cx="${x}" cy="${y}" r="${12+i%3*3}" fill="#ff5a7a"/>`}en.innerHTML=g;
+    let b='';for(let i=0;i<3;i++){const y=170-((t*300+i*70)%220);b+=`<rect x="${258+Math.sin(t*1.5)*70}" y="${y}" width="4" height="14" fill="#ffe27a"/>`}bu.innerHTML=b;sh.setAttribute('transform',`translate(${Math.sin(t*1.5)*70},0)`);
+    ls.forEach((c,i)=>{appear(c,t,e[4+i],.6,{y:40,ease:E.spring});fl[i].style.width=(100*P(t,e[4+i]+.15,1.1,E.inout))+'%'});appear(lt,t,e[4]-.1,.5,{y:10,s:1})}}}
+
+/* ======================= scene 5: it sees its own work ======================= */
+function scene5(){
+  const R=newScene(),e=EV(5);
+  const hd=head(R,'It <em>sees</em> its own work');
+  const br=card(R,140,220,820,570,`<div style="height:70px;border-bottom:1.5px solid rgba(255,255,255,.1);display:flex;align-items:center;padding:0 28px;gap:12px"><span style="width:16px;height:16px;border-radius:50%;background:#ff6b6b99"></span><span style="width:16px;height:16px;border-radius:50%;background:#ffb45499"></span><span style="width:16px;height:16px;border-radius:50%;background:#6ee7a899"></span><span class="mono" style="margin-left:18px;font-size:24px;color:var(--mut);background:rgba(0,0,0,.3);padding:6px 20px;border-radius:99px">localhost:8890</span></div>
+    <div class="pg" style="position:absolute;left:0;right:0;top:70px;bottom:0;background:linear-gradient(160deg,#0a0f1d,#070a14);overflow:hidden"><div style="position:absolute;left:24px;top:20px;padding:10px 18px;border-radius:14px;background:rgba(255,255,255,.08);font-size:24px">Squishes: <b>0</b></div><div class="jb" style="position:absolute;left:310px;top:120px;width:200px;height:200px;border-radius:52px;background:radial-gradient(circle at 32% 28%,#d6ffe9,#3fe39a 38%,#0b6a46);box-shadow:0 0 90px rgba(63,227,154,.35)"></div><div class="scan" style="position:absolute;left:0;right:0;height:6px;top:0;background:linear-gradient(90deg,transparent,#fff,transparent);box-shadow:0 0 30px 8px rgba(255,255,255,.5);opacity:0"></div>
+    <div class="err mono" style="position:absolute;left:18px;right:18px;bottom:18px;padding:14px 18px;border-radius:16px;background:rgba(255,80,80,.18);border:2px solid #ff6b6b;color:#ffb0b0;font-size:22px;line-height:1.35;opacity:0">Uncaught TypeError: Cannot set properties of null (setting 'textContent') at index.html:41</div>
+    <div class="ok" style="position:absolute;left:18px;right:18px;bottom:18px;padding:14px 18px;border-radius:16px;background:rgba(110,231,168,.16);border:2px solid #6ee7a8;color:#6ee7a8;font-size:26px;font-weight:700;opacity:0">No errors. Layout fits on phone and desktop.</div></div>`,'overflow:hidden;padding:0');
+  const scan=$('.scan',br),err=$('.err',br),ok=$('.ok',br),jb=$('.jb',br);
+  const ch=card(R,1020,220,760,570,`<div class="lbl">AGENT</div><div id="cl" style="margin-top:20px;display:flex;flex-direction:column;gap:16px"></div>`,'padding:36px 40px');
+  const cl=$('#cl',ch);
+  const m1=mk('div','',`<div class="pill" style="font-size:24px;padding:10px 22px;color:#ffb0b0"><span class="mono">look_page</span> found 1 console error</div>`,cl);
+  const sh=mk('div','',`<div style="height:130px;width:230px;border-radius:16px;border:1.5px solid rgba(255,255,255,.25);background:linear-gradient(160deg,#0a0f1d,#070a14);position:relative;overflow:hidden"><div style="position:absolute;left:78px;top:26px;width:70px;height:70px;border-radius:20px;background:radial-gradient(circle at 32% 28%,#d6ffe9,#3fe39a 38%,#0b6a46)"></div></div><div style="font-size:22px;color:var(--mut);margin-top:6px">screenshot attached</div>`,cl);
+  const m2=mk('div','',`<div style="padding:16px 24px;border-radius:24px 24px 24px 8px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.14);font-size:29px;line-height:1.35">Line 41 reads an element that does not exist. Fixing it.</div>`,cl);
+  const m3=mk('div','',`<div class="pill" style="font-size:25px;padding:10px 22px"><span style="color:#9ea3ad">${ic('edit',28)}</span><span class="mono">Edit index.html</span><span style="color:#6ee7a8">${ic('check',28)}</span></div>`,cl);
+  const fly=mk('div','abs','',R);fly.style.cssText+='left:0;top:0;width:230px;height:130px;border-radius:16px;border:2px solid #fff;background:linear-gradient(160deg,#0a0f1d,#070a14);box-shadow:0 20px 50px rgba(0,0,0,.6);opacity:0';
+  fly.innerHTML='<div style="position:absolute;left:78px;top:26px;width:70px;height:70px;border-radius:20px;background:radial-gradient(circle at 32% 28%,#d6ffe9,#3fe39a 38%,#0b6a46)"></div>';
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});appear(br,t,e[0],.8,{y:60,ease:E.spring});appear(ch,t,e[0]+.12,.8,{y:60,ease:E.spring});
+    jb.style.transform=`scale(${1+.05*Math.sin(t*3)},${1-.05*Math.sin(t*3)})`;
+    const sp=P(t,e[1],1.3,E.inout);scan.style.top=(sp*480)+'px';scan.style.opacity=t>e[1]&&sp<1?1:0;
+    const eo=P(t,e[2],.3,E.out),fixed=t>e[5];err.style.opacity=fixed?0:eo;err.style.transform=`translateX(${(1-eo)*0 + (t>e[2]&&t<e[2]+.4?Math.sin(t*70)*5:0)}px)`;ok.style.opacity=P(t,e[5],.4);
+    appear(m1,t,e[2]+.2,.5,{y:16,s:1});
+    const fp=P(t,e[3],.85,E.inout);put(fly,{x:340+(1030-340)*fp,y:330+(420-330)*fp-90*Math.sin(Math.PI*fp),o:t>e[3]&&t<e[3]+1.0?1:0,s:1-.0*fp});appear(sh,t,e[3]+.85,.4,{y:10,s:1});
+    appear(m2,t,e[4]-.5,.5,{y:16,s:1});appear(m3,t,e[4]+.3,.5,{y:16,s:1})}}}
+
+/* ======================= scene 6: the reviewer ======================= */
+function scene6(){
+  const R=newScene(),e=EV(6);
+  const hd=head(R,'A <em>reviewer</em> checks it');
+  const ag=card(R,140,230,520,260,`<div class="lbl">AGENT</div><div class="bb" style="margin-top:26px;display:inline-block;padding:18px 28px;border-radius:26px 26px 26px 8px;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.16);font-size:38px;font-weight:600">Done!</div>`,'padding:36px 40px');
+  const bb=$('.bb',ag);
+  const back=mk('div','pill abs',`${ic('refresh',34)} Sent back: score counter is missing`,R);back.style.cssText+='left:140px;top:560px;font-size:28px;color:#ffb0b0;border-color:rgba(255,107,107,.5)';
+  const rv=card(R,740,220,1040,580,`<div class="row" style="justify-content:space-between"><div class="row"><span style="color:#cfd3da">${ic('search',44)}</span><span style="font-size:38px;font-weight:700">Reviewer</span><span class="chip" style="color:#e8eaee;font-size:22px;padding:3px 16px"><i></i>strongest model</span></div></div><div class="lbl" style="margin-top:34px">CHECKING THE FILES AGAINST YOUR BRIEF</div><div id="rl" style="margin-top:22px;display:flex;flex-direction:column;gap:16px"></div><div class="vd" style="position:absolute;left:44px;right:44px;bottom:30px;padding:16px 26px;border-radius:22px;font-size:32px;font-weight:700;opacity:0"></div>`,'padding:40px 46px');
+  const vd=$('.vd',rv);
+  const rows=['Squish and poke the slime','Realistic translucent jelly look','Score counter works'].map(s=>{const d=mk('div','row',`<span class="mk" style="width:54px;height:54px;border-radius:50%;display:grid;place-items:center;border:2.5px solid rgba(255,255,255,.25);color:#6ee7a8;flex:none"></span><span style="font-size:34px">${s}</span>`,$('#rl',rv));d.style.cssText+=';padding:12px 18px;border-radius:20px;background:rgba(255,255,255,.05)';return d});
+  const mks=rows.map(r=>$('.mk',r));
+  function setMk(m,st){m.innerHTML=st===1?ic('check',34):st===2?ic('x',34):'';m.style.color=st===2?'#ff6b6b':'#6ee7a8';m.style.borderColor=st===1?'#6ee7a8':st===2?'#ff6b6b':'rgba(255,255,255,.25)';m.style.background=st===1?'rgba(110,231,168,.14)':st===2?'rgba(255,107,107,.14)':''}
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});appear(ag,t,e[0],.8,{y:60,ease:E.spring});appear(rv,t,e[0]+.1,.8,{y:60,ease:E.spring});
+    const bp=P(t,e[1],.5,E.spring);bb.style.transform=`scale(${.6+.4*bp})`;bb.style.opacity=clamp(bp*2);
+    rows.forEach((r,i)=>appear(r,t,e[2]+.1*i,.5,{y:14,x:-20,s:1}));
+    setMk(mks[0],t>e[3]?1:0);setMk(mks[1],t>e[4]?1:0);setMk(mks[2],t>e[7]?1:(t>e[5]?2:0));
+    const rej=t>e[5]&&t<e[7];const ap=t>e[7];
+    vd.style.opacity=P(t,e[5]+.1,.3)*(rej||ap?1:0);vd.textContent=ap?'Approved. The project matches the brief.':'Not finished: score counter is missing.';vd.style.background=ap?'rgba(110,231,168,.16)':'rgba(255,107,107,.16)';vd.style.border=ap?'2px solid #6ee7a8':'2px solid #ff6b6b';vd.style.color=ap?'#6ee7a8':'#ffb0b0';
+    appear(back,t,e[6],.6,{y:20,s:.92,ease:E.spring});back.style.opacity=t>e[7]+.2?Math.max(0,1-(t-e[7]-.2)*2.5):back.style.opacity}}}
+
+/* ======================= scene 7: keeps going ======================= */
+function scene7(){
+  const R=newScene(),e=EV(7);
+  const hd=head(R,'It <em>keeps going</em>');
+  const cx=520,cy=450,rad=190;
+  const ringBox=mk('div','abs',`<svg width="460" height="460" viewBox="-230 -230 460 460" style="overflow:visible"><circle r="${rad}" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="22"/><circle class="pr" r="${rad}" fill="none" stroke="url(#gr)" stroke-width="22" stroke-linecap="round" transform="rotate(-90)" stroke-dasharray="${2*Math.PI*rad}" stroke-dashoffset="${2*Math.PI*rad}"/><defs><linearGradient id="gr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8fb8b2"/><stop offset="1" stop-color="#fff"/></linearGradient></defs></svg><div class="tm mono" style="position:absolute;left:0;right:0;top:170px;text-align:center;font-size:84px;font-weight:700">00:00</div><div style="position:absolute;left:0;right:0;top:272px;text-align:center;font-size:26px;color:var(--mut);letter-spacing:2px">WORKING TIME</div>`,R);ringBox.style.cssText+=`left:${cx-230}px;top:${cy-230}px;width:460px;height:460px`;
+  const pr=$('.pr',ringBox),tm=$('.tm',ringBox);
+  const lv=[['Low','Stops when the work is done','#9ea3ad'],['Balanced','Works up to 30 minutes','#a79fc2'],['Max','Works up to 1 hour','#e8eaee']].map((d,i)=>{const c=card(R,1000,220+i*170,780,150,`<div class="row" style="height:100%"><span style="width:12px;height:70px;border-radius:99px;background:${d[2]}"></span><div><div style="font-size:42px;font-weight:700">${d[0]}</div><div style="font-size:29px;color:var(--mut);margin-top:4px">${d[1]}</div></div></div>`,'padding:0 40px;border-radius:32px');return c});
+  const acts=['Testing at phone size','Checking the console','Polishing the animation','Fixing a layout overflow'];
+  const tk=mk('div','pill abs','',R);tk.style.cssText+='left:240px;top:700px;font-size:28px;min-width:560px;justify-content:center';
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});appear(ringBox,t,e[0],.8,{y:50,ease:E.spring});lv.forEach((c,i)=>appear(c,t,e[1+i],.7,{y:50,ease:E.spring}));
+    const p=P(t,e[4],e[9]-e[4]+.8,E.inout);pr.setAttribute('stroke-dashoffset',(2*Math.PI*rad*(1-p)).toFixed(1));const mins=p*60;tm.textContent=String(Math.floor(mins)).padStart(2,'0')+':'+String(Math.floor((mins%1)*60)).padStart(2,'0');
+    const mx=P(t,e[4]+1.2,.8,E.out);lv[2].style.borderColor=`rgba(255,255,255,${.1+.6*mx})`;lv[2].style.boxShadow=`inset 2px 2px 0 rgba(255,255,255,.34),0 0 ${70*mx}px rgba(255,255,255,${.22*mx}),0 44px 100px -24px rgba(0,0,0,.75)`;
+    let ai=-1;for(let i=0;i<4;i++)if(t>e[5+i])ai=i;tk.innerHTML=ai<0?'':`<span class="dot"></span>${acts[ai]}`;put(tk,{o:t>e[5]?1:0,y:0})}}}
+
+/* ======================= scene 8: switches models ======================= */
+function scene8(){
+  const R=newScene(),e=EV(8);
+  const hd=head(R,'It <em>switches</em> models by itself');
+  const names=['Gemini','Groq','Mistral','Cerebras'];
+  const cs=names.map((n,i)=>card(R,135+i*420,220,390,230,`<div class="row"><span class="dot"></span><b style="font-size:40px">${n}</b></div><div class="bar" style="margin-top:30px"><i class="bf" style="width:${i?12:55}%;background:#6ee7a8"></i></div><div class="lb" style="margin-top:18px;font-size:26px;color:var(--mut)">${i?'plenty left':'free requests used'}</div>`,'padding:34px;border-radius:32px'));
+  const arrows=[0,1,2].map(i=>{const a=mk('div','abs',ic('arrow',40),R);a.style.cssText+=`left:${135+i*420+390-10}px;top:322px;color:#9ea3ad`;return a});
+  const rs=card(R,140,500,780,200,`<div class="row" style="height:100%"><span style="color:#ffb454">${ic('clock',70)}</span><div><div style="font-size:26px;letter-spacing:2px;color:var(--dim)">GEMINI LIMIT</div><div style="font-size:44px;font-weight:700;margin-top:4px">Resets in 3 h 12 min</div></div></div>`,'padding:0 44px;border-radius:32px;border-color:rgba(255,180,84,.45)');
+  const lk=card(R,1000,500,780,200,`<div class="row" style="height:100%"><span class="lk" style="color:#ffb454">${ic('lock',66)}</span><div style="flex:1"><div style="font-size:36px;font-weight:700">Paid providers</div><div style="font-size:27px;color:var(--mut);margin-top:4px">off unless you allow them</div></div><span style="width:104px;height:56px;border-radius:30px;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.2);position:relative"><span style="position:absolute;left:5px;top:5px;width:42px;height:42px;border-radius:50%;background:#fff"></span></span></div>`,'padding:0 44px;border-radius:32px');
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});cs.forEach((c,i)=>appear(c,t,e[0]+.12*i,.6,{y:50,s:.9,ease:E.spring}));arrows.forEach((a,i)=>appear(a,t,e[0]+.4+.1*i,.4,{y:0,x:-12,s:1}));
+    const fill=P(t,e[1],e[2]-e[1],E.inout),lim=t>=e[2];const b0=cs[0].querySelector('.bf'),d0=cs[0].querySelector('.dot');b0.style.width=(55+45*fill)+'%';b0.style.background=lim?'#ff6b6b':'#6ee7a8';d0.style.background=lim?'#ff6b6b':'#6ee7a8';d0.style.boxShadow=`0 0 18px ${lim?'#ff6b6b':'#6ee7a8'}`;cs[0].querySelector('.lb').textContent=lim?'limit reached':'free requests used';
+    const dim=P(t,e[2],.6);cs[0].style.opacity=cs[0].style.opacity*(1-.45*dim);
+    const sw=P(t,e[3],.6,E.spring);cs[1].style.borderColor=`rgba(110,231,168,${.65*sw})`;cs[1].style.boxShadow=`inset 2px 2px 0 rgba(255,255,255,.34),0 0 ${70*sw}px rgba(110,231,168,${.4*sw}),0 26px 60px -20px rgba(0,0,0,.7)`;if(sw>.4)cs[1].querySelector('.lb').textContent='now working';
+    const ob=P(t,e[2],e[3]-e[2],E.inout);arrows[0].style.color=ob>0?'#fff':'#9ea3ad';arrows[0].style.transform+=` scale(${1+.35*pulse(t,e[3]-.3,.8)})`;
+    appear(rs,t,e[5],.7,{y:40,ease:E.spring});appear(lk,t,e[6],.7,{y:40,ease:E.spring})}}}
+
+/* ======================= scene 9: projects stay separate ======================= */
+function scene9(){
+  const R=newScene(),e=EV(9);
+  const hd=head(R,'Every project <em>stays separate</em>');
+  const defs=[['Slime shader game',['index.html','shader.js']],['Landing page',['index.html','style.css']],['Space shooter',['game.js','assets/']]];
+  const cs=defs.map((d,i)=>card(R,140+i*560,220,520,260,`<div class="row"><span style="color:#cfd3da">${ic('folder',52)}</span><span style="font-size:36px;font-weight:700">${d[0]}</span></div><div style="margin-top:26px;display:flex;gap:12px;flex-wrap:wrap">${d[1].map(f=>`<span class="mono" style="font-size:24px;padding:6px 16px;border-radius:12px;background:rgba(255,255,255,.08)">${f}</span>`).join('')}</div><div class="st" style="position:absolute;left:36px;bottom:30px;font-size:27px;color:var(--mut)"></div><span class="lkb" style="position:absolute;right:30px;top:28px;color:#ffb454;opacity:0">${ic('lock',44)}</span>`,'padding:36px;border-radius:32px'));
+  const sts=cs.map(c=>$('.st',c)),lks=cs.map(c=>$('.lkb',c));
+  const pr=card(R,140,540,1640,200,`<div class="row" style="height:100%;gap:34px"><span style="color:#8fb8b2">${ic('bolt',64)}</span><div style="flex:1"><div style="font-size:26px;letter-spacing:2px;color:var(--dim)">NEW IDEA DETECTED</div><div style="font-size:38px;font-weight:600;margin-top:6px">"Now make me a space shooter." Start a new project?</div></div><span class="pill" style="font-size:30px;background:linear-gradient(160deg,#f4f5f7,#cfd3da 60%,#8d929c);color:#14161a;border:0">New project</span><span class="pill" style="font-size:30px">Keep here</span></div>`,'padding:0 46px;border-radius:32px');
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});cs.forEach((c,i)=>appear(c,t,e[1+i],.7,{y:50,ease:E.spring}));
+    const sel=P(t,e[4],.5,E.spring);
+    cs.forEach((c,i)=>{const mine=i===0;if(mine){c.style.borderColor=`rgba(110,231,168,${.65*sel})`;c.style.boxShadow=`inset 2px 2px 0 rgba(255,255,255,.34),0 0 ${70*sel}px rgba(110,231,168,${.35*sel}),0 44px 100px -24px rgba(0,0,0,.75)`;sts[i].textContent=sel>.4?'The agent works here':'';sts[i].style.color='#6ee7a8'}else{c.style.opacity=c.style.opacity*(1-.5*sel);lks[i].style.opacity=sel;sts[i].textContent=sel>.4?'invisible to the agent':'';sts[i].style.color='#ffb454'}});
+    appear(pr,t,e[6],.7,{y:40,ease:E.spring})}}}
+
+/* ======================= scene 10: you stay in control ======================= */
+function scene10(){
+  const R=newScene(),e=EV(10);
+  const hd=head(R,'You stay <em>in control</em>');
+  const ap=card(R,140,220,880,500,`<div class="row" style="font-size:38px;font-weight:700"><span style="color:#ffb454">${ic('shield',54)}</span><span class="at">Approval needed: run a command</span></div><div class="mono" style="margin-top:30px;padding:26px 30px;border-radius:20px;background:rgba(0,0,0,.4);font-size:34px">PS&gt; python test.py</div><div class="res" style="margin-top:28px;font-size:34px;color:#6ee7a8;opacity:0;display:flex;align-items:center;gap:14px">${ic('check',44)}Allowed. Tests passed.</div><div class="bt" style="position:absolute;left:44px;bottom:44px;display:flex;gap:22px"><span class="al" style="width:260px;height:88px;border-radius:999px;background:linear-gradient(160deg,#f4f5f7,#cfd3da 60%,#8d929c);color:#14161a;display:flex;align-items:center;justify-content:center;gap:12px;font-size:36px;font-weight:700">${ic('check',38)}Allow</span><span style="width:240px;height:88px;border-radius:999px;border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;gap:12px;font-size:36px;font-weight:600">${ic('x',38)}Deny</span></div>`,'padding:44px;border-color:rgba(255,180,84,.5)');
+  const al=$('.al',ap),bt=$('.bt',ap),res=$('.res',ap),at=$('.at',ap);
+  const cd=[['key','Your keys never leave your PC','#8fb8b2'],['shield','Dangerous commands are blocked','#ff8f8f'],['folder','Works only in the project folder','#6ee7a8']].map((d,i)=>{const c=card(R,1080,220+i*180,700,150,`<div class="row" style="height:100%"><span style="color:${d[2]}">${ic(d[0],58)}</span><span style="font-size:34px;font-weight:650;line-height:1.2">${d[1]}</span></div>`,'padding:0 40px;border-radius:32px');return c});
+  return{el:R,upd(t){
+    appear(hd,t,e[0]-.8,.7,{y:30});appear(ap,t,e[0],.8,{y:60,ease:E.spring});
+    al.style.transform=`scale(${1-.08*pulse(t,e[1]-.1,.3)})`;const ok=t>e[1];bt.style.opacity=ok?Math.max(0,1-(t-e[1])*3):1;res.style.opacity=P(t,e[2],.4);at.textContent=ok?'Approved':'Approval needed: run a command';ap.style.borderColor=ok?'rgba(110,231,168,.5)':'rgba(255,180,84,.5)';
+    cd.forEach((c,i)=>appear(c,t,e[3+i],.7,{y:40,ease:E.spring}))}}}
+
+/* ======================= scene 11: outro ======================= */
+function scene11(){
+  const R=newScene(),ev=T.ev.out;
+  const rings=[0,1,2,3].map(()=>mk('div','ring','',R));
+  const logo=mk('img','abs','',R);logo.src='logo.png';logo.style.cssText+='left:830px;top:250px;width:260px;height:260px;filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))';
+  const h=mk('div','h1','Free. Local. <em>Yours.</em>',R);h.style.cssText+='left:0;right:0;top:540px;text-align:center;font-size:130px;letter-spacing:-4px';
+  const sub=mk('div','abs','AQUA CODE   |   MADE BY SAAD',R);sub.style.cssText+='left:0;right:0;top:712px;text-align:center;font-size:36px;letter-spacing:10px;color:var(--mut);font-weight:600';
+  return{el:R,upd(t){
+    rings.forEach((r,i)=>{const p=((t*.4+i/4)%1),rad=150+p*800;r.style.cssText=`left:${960-rad}px;top:${380-rad}px;width:${rad*2}px;height:${rad*2}px;opacity:${(1-p)*.2*P(t,ev.drop[0],.5)}`});
+    const lp=P(t,ev.drop[0],1.0,E.spring);put(logo,{o:clamp(lp*2),y:(1-lp)*-140,s:.6+.4*lp,b:(1-clamp(lp*1.5))*10});appear(h,t,ev.text,.9,{y:40});appear(sub,t,ev.text+.5,.8,{y:20})}}}
+
+/* ======================= captions + progress navigation ======================= */
+const CAPS=[];
+function buildCaps(){
+  T.lines.forEach((ln,i)=>{const c=mk('div','capl','',$('#cap'));c.innerHTML=ln.words.map(w=>`<span>${esc(w.w)}</span>`).join(' ');CAPS.push({el:c,spans:[...c.children],ln})})
+}
+function capUpd(t){CAPS.forEach(c=>{const a=c.ln.s-.15,b=c.ln.e+.35;const vis=t>=a&&t<=b;c.el.style.display=vis?'block':'none';if(!vis)return;
+  c.el.style.opacity=P(t,a,.25,E.out)*(1-P(t,b-.3,.3,E.lin));c.el.style.transform=`translateY(${(1-P(t,a,.35))*16}px)`;
+  c.ln.words.forEach((w,k)=>{c.spans[k].style.opacity=t>=w.s-.02?1:.42})})}
+const NAMES=['Brief','Models','Loop','Recipes','Vision','Review','Persist','Switch','Projects','Control'];
+function buildNav(){NAMES.forEach((n,i)=>{NAVEL.push(mk('div','nv',`<b>${i+1}</b>${n}`,$('#nav')))})}
+function navUpd(t){const nv=$('#nav');const sIn=T.lines[1].s-.6,sOut=T.lines[11].s-.2;nv.style.opacity=P(t,sIn,.6)*(1-P(t,sOut,.5));let cur=-1;for(let k=1;k<=10;k++)if(t>=T.lines[k].s-.2)cur=k-1;NAVEL.forEach((el,i)=>{el.className='nv'+(i===cur?' on':(i<cur?' past':''))})}
+
+/* ======================= seek ======================= */
+function seek(t){
+  updBg(t);
+  SC.forEach((s,k)=>{const [a,b]=WIN[k];const vis=t>=a&&t<=b;s.el.style.visibility=vis?'visible':'hidden';if(!vis)return;
+    const fi=P(t,a,.55,E.out),fo=1-P(t,b-.45,.45,E.lin);s.el.style.opacity=(k===0?1:fi)*fo;s.el.style.transform=`translateY(${(1-fi)*(k?18:0)}px) scale(${.985+.015*fi+(1-fo)*.012})`;s.upd(t)});
+  capUpd(t);navUpd(t);
+}
+window.seek=seek;
+fetch('timeline.json').then(r=>r.json()).then(j=>{T=j;WIN=T.scenes;SC=[scene0(),scene1(),scene2(),scene3(),scene4(),scene5(),scene6(),scene7(),scene8(),scene9(),scene10(),scene11()];buildCaps();buildNav();seek(0);document.fonts.ready.then(()=>{window.READY=true})});
+</script></body></html>

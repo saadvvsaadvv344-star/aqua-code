@@ -1,0 +1,18 @@
+{
+  "voice": "en-US-AndrewMultilingualNeural",
+  "rate": "-3%",
+  "lines": [
+    "This is how Aqua Code works, from the moment you type a request to the moment your project is finished.",
+    "You write what you want, even with typos and half sentences. First, your strongest model rewrites it into a clear brief, so nobody has to guess what you meant.",
+    "Then the cheapest model starts. Hard jobs like shaders, three D, and games begin one step higher. If a model struggles, a stronger one takes over, with the full conversation.",
+    "The agent works in a loop. It reads your files, writes code, edits it, runs commands, and reads the result, again and again, until the job is done.",
+    "It does not invent everything from scratch. It starts from a tested recipe, builds a small working core first, and then adds features, layer by layer.",
+    "After every edit, Aqua opens the page in a hidden browser. Real errors and a real screenshot go straight back to the agent, so it can see its own bugs and fix them.",
+    "When the agent says it is done, a stronger model reviews the files against your brief. If something is missing, the agent is sent back to fix it.",
+    "On Balanced and Max, the agent keeps testing and polishing for up to thirty minutes, or a full hour, instead of stopping early.",
+    "If a model hits its limit, Aqua switches to the next one by itself, and shows you when the limit resets. Free providers first. Paid ones, only if you allow it.",
+    "Every project lives in its own folder. The agent can never see the files or the memory of your other projects.",
+    "And you stay in control. It asks before it edits files or runs commands, dangerous commands are blocked, and your keys never leave your PC.",
+    "That is Aqua Code. Free, local, and yours. Made by Saad."
+  ]
+}

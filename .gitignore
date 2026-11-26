@@ -15,3 +15,7 @@ video/own_voice/
 Thumbs.db
 # your projects (each project is its own folder, never uploaded)
 projects/
+
+# how-it-works presentation: render output stays local (attach the mp4 to a Release)
+video/howitworks/build/
+video/howitworks/*.mp4
