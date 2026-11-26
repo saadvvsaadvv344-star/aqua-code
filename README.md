@@ -33,13 +33,13 @@ It opens as its own desktop window (Edge, Chrome, Brave or Chromium in app mode:
 
 ### Working level (how hard Aqua works on your PC)
 
-The chat bar (next to Auto / Lite / Pro and the approval mode) has **Working level: Low, Balanced or High**, and Settings has the same choice.
+The chat bar (next to Auto / Lite / Pro and the approval mode) has a **working-level swapper: Low, Balanced or Max**. Drag it or click a stop; it applies instantly with no restart. Settings has the same choice.
 
 | Level | What it does |
 | --- | --- |
 | **Low** | Gentle. Plain look (glass off), no animations, no intro, and the Aqua server runs at low priority on a quarter of your CPU cores (4 of 16, never fewer than 2). Anything it starts (commands, dev servers) inherits that. |
 | **Balanced** (default) | Soft glass, normal priority, all cores. |
-| **High** | Full liquid glass and full speed. |
+| **Max** | Full liquid glass with a **live water floor** behind it: ripples follow your cursor and clicks, with caustic light and reflections. If your PC cannot keep up, Aqua drops back to Balanced by itself. |
 
 On Windows you can switch levels at any time. On macOS and Linux a lowered priority cannot be raised again without administrator rights, so going back up from Low needs an app restart there. Heavy jobs such as rendering the explainer video run with their own limits (see `video/README.md`).
 

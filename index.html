@@ -343,6 +343,25 @@ pre.out{border-radius:12px;background:var(--code);margin-top:8px}
 [data-fx=off] .btn,[data-fx=off] .send,[data-fx=off] .si,[data-fx=off] .sug button,[data-fx=off] .wp,[data-fx=off] .seg .thumb,[data-fx=off] .tchips .thumb{transition:none!important}
 [data-fx=off] .btn:hover,[data-fx=off] .send:hover{transform:none!important}
 [data-fx=off] .logo{box-shadow:none!important}
+/* ---- working-level swapper ---- */
+.lvsw{display:inline-flex;align-items:center;gap:4px;padding:3px 3px 3px 10px;border-radius:999px;background:var(--field);border:1px solid var(--gb2)}
+.lvsw .lvic{display:inline-flex;color:var(--mut)}
+.lvtrack{position:relative;display:grid;grid-template-columns:repeat(3,1fr);width:240px;height:34px;touch-action:none;cursor:grab;user-select:none}
+.lvtrack.drag{cursor:grabbing}
+.lvtrack button{position:relative;z-index:2;font-size:12.5px;font-weight:650;color:var(--mut);border-radius:999px;transition:color .25s;overflow:visible}
+.lvtrack button.on{color:var(--tx)}
+.lvtrack button::before,.lvtrack button::after{display:none!important}
+.lvthumb{position:absolute;left:0;top:0;bottom:0;width:33.3333%;border-radius:999px;z-index:1;transition:transform .55s cubic-bezier(.34,1.5,.5,1),background .35s,box-shadow .35s}
+.lvtrack.drag .lvthumb{transition:background .35s,box-shadow .35s}
+.lvthumb[data-l=low]{background:linear-gradient(145deg,rgba(143,184,178,.5),rgba(143,184,178,.16));box-shadow:inset 1px 1px 0 var(--hi),0 3px 12px -3px rgba(143,184,178,.7)}
+.lvthumb[data-l=balanced]{background:linear-gradient(145deg,rgba(167,159,194,.5),rgba(167,159,194,.16));box-shadow:inset 1px 1px 0 var(--hi),0 3px 12px -3px rgba(167,159,194,.7)}
+.lvthumb[data-l=high]{background:linear-gradient(120deg,#d9f4f8,#8fd3df 50%,#d9f4f8);background-size:200% 100%;animation:lvshine 3.2s linear infinite;box-shadow:inset 1px 1px 0 #fff,0 0 18px 2px rgba(143,211,223,.65)}
+@keyframes lvshine{to{background-position:200% 0}}
+.lvtrack button.on[data-l=high]{color:#08272d}
+[data-fx=off] .lvthumb{transition:none!important;animation:none!important}
+/* max level: a live water floor behind the glass */
+#waterbg{position:fixed;inset:0;width:100vw;height:100vh;z-index:1;pointer-events:none}
+[data-water=on] .bg i,[data-water=on] .bg u,[data-water=on] .bg s,[data-water=on] .bg>div{display:none}
 .mbtn{display:none}
 @media (max-width:1240px){.app{grid-template-columns:260px minmax(0,1fr)}.right{position:fixed;right:14px;top:14px;bottom:14px;width:min(360px,calc(100vw - 28px));z-index:30;transform:translateX(120%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}.right.show{transform:none}.mbtn.r{display:inline-flex}}
 @media (max-width:860px){.app{grid-template-columns:1fr}.left{position:fixed;left:14px;top:14px;bottom:14px;width:min(300px,calc(100vw - 28px));z-index:30;transform:translateX(-120%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}.left.show{transform:none}.mbtn{display:inline-flex}.sug{grid-template-columns:1fr}.g2,.g3{grid-template-columns:1fr}.trow{grid-template-columns:1fr 1fr}.head{flex-wrap:wrap}}
@@ -502,6 +521,7 @@ void main(){
 <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
 </defs></svg>
 
+<canvas id="waterbg" style="display:none"></canvas>
 <div class="bg"><i></i><i></i><i></i><i></i><u></u><u></u><u></u><s></s></div><div class="grain"></div>
 
 <div class="app">
@@ -532,7 +552,7 @@ void main(){
         <div class="comp-bar">
           <div class="tchips" id="tchips"></div>
           <select class="sel" id="appr" title="Approval mode"><option value="ask">Ask for every change</option><option value="edits">Auto edits, ask commands</option><option value="auto">Full auto</option></select>
-          <div class="tchips" id="lvChips"></div>
+          <div class="lvsw" id="lvChips"></div>
           <span class="grow"></span>
           <div class="fuse" id="sg"><button class="btn pill" id="escBtn" style="display:none"><svg class="i"><use href="#i-bolt"/></svg>Escalate now</button>
           <button class="send" id="send" title="Send"><svg class="i" style="width:22px;height:22px;stroke-width:2.4"><use href="#i-send"/></svg></button></div>
@@ -647,12 +667,11 @@ function addFailover(ev){
   add(el(`<div class="arrow"><span class="chip" style="color:var(--amber)"><i></i>${esc(ev.frm)}</span>${ic('arrow')}<span class="chip" style="color:var(--green)"><i></i>${esc(ev.to)}</span></div><div><b>Switching to another AI</b><small>${esc(ev.reason)} - now using ${esc(ev.to)} (${esc(ev.model)})</small></div>`,'esc'));
 }
 async function setLevel(l){
-  if(S.runId){toast('Wait for the running task to finish');return}
-  const r=await api('/api/config',{level:l});if(!r.config){toast(r.error||'Could not change the level');return}
-  const wasOff=FX.mode==='off';S.cfg=r.config;FX.mode=LV_FX[l];
+  if(!S.cfg||l===S.cfg.level){renderLevel();return}
+  S.cfg.level=l;FX.mode=LV_FX[l];
   try{localStorage.setItem('ac-fx',FX.mode);localStorage.setItem('ac-intro',l==='low'?'off':'on')}catch(e){}
-  if(wasOff!==(FX.mode==='off')){location.reload();return}
-  FX.apply();render();toast('Working level: '+l);
+  FX.apply();renderLevel();toast('Working level: '+LV_NAME[l]+(l==='high'?' (live water)':''));
+  const r=await api('/api/config',{level:l});if(r.config){S.cfg.level=r.config.level}else{toast(r.error||'The server could not change the level')}
 }
 function addNotice(t){add(el(`${ic('alert')}<div>${esc(t)}</div>`,'esc'))}
 function addError(t){
@@ -792,12 +811,21 @@ function renderRight(){
     if(r.ok){const b=(r.data.balance_infos||[]).map(x=>`<b>${esc(x.currency)} ${esc(x.total_balance)}</b> (granted ${esc(x.granted_balance)}, topped up ${esc(x.topped_up_balance)})`).join('<br>');S.balance=b||'No balance information returned.';if(r.data.is_available===false)S.balance+='<br><span style="color:var(--red)">Account has insufficient balance.</span>'}
     else S.balance=esc(r.error||'Failed');renderRight()};
 }
+const LEVELS=['low','balanced','high'],LV_NAME={low:'Low',balanced:'Balanced',high:'Max'};
 function renderLevel(){
-  const box=$('#lvChips');if(!box||!S.cfg)return;const lv=S.cfg.level||'balanced',n=S.cores||1,cap=S.coreCap||n;
-  const tip={low:`Low: gentle, plain look, ${cap} of ${n} cores, lowest priority`,balanced:`Balanced: soft glass, all ${n} cores`,high:`High: full glass, full speed, all ${n} cores`};
-  box.title='Working level - '+tip[lv];
-  box.innerHTML=`<span style="display:inline-flex;align-items:center;padding:0 4px 0 8px;color:var(--mut)">${ic('gauge','width:17px;height:17px')}</span>`+['low','balanced','high'].map(k=>`<button data-l="${k}" class="${k===lv?'on':''}" title="${esc(tip[k])}"><i style="--c:${k==='low'?'var(--teal)':k==='balanced'?'var(--violet)':'var(--gold)'}"></i>${k[0].toUpperCase()+k.slice(1)}</button>`).join('');
-  box.querySelectorAll('button').forEach(b=>b.onclick=()=>setLevel(b.dataset.l));thumb(box,'lvchips');
+  const box=$('#lvChips');if(!box||!S.cfg)return;const tr0=box.querySelector('.lvtrack');if(tr0&&tr0.classList.contains('drag'))return;
+  const lv=S.cfg.level||'balanced',n=S.cores||1,cap=S.coreCap||n,idx=LEVELS.indexOf(lv);
+  const tip={low:`Low: gentle, plain look, ${cap} of ${n} cores, lowest priority`,balanced:`Balanced: soft glass, all ${n} cores`,high:`Max: full liquid glass with a live water floor, all ${n} cores`};
+  box.title='Working level (drag or click) - '+tip[lv];
+  box.innerHTML=`<span class="lvic">${ic('gauge','width:17px;height:17px')}</span><div class="lvtrack"><b class="lvthumb" data-l="${lv}" style="transform:translateX(${idx*100}%)"></b>${LEVELS.map(k=>`<button data-l="${k}" class="${k===lv?'on':''}" title="${esc(tip[k])}">${LV_NAME[k]}</button>`).join('')}</div>`;
+  const tr=box.querySelector('.lvtrack'),th=box.querySelector('.lvthumb');
+  tr.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{if(!tr._moved)setLevel(b.dataset.l)}));
+  let sx=0,down=false;tr._moved=false;
+  tr.addEventListener('pointerdown',e=>{down=true;tr._moved=false;sx=e.clientX;try{tr.setPointerCapture(e.pointerId)}catch(_){}});
+  tr.addEventListener('pointermove',e=>{if(!down)return;if(!tr._moved&&Math.abs(e.clientX-sx)>6){tr._moved=true;tr.classList.add('drag')}
+    if(tr._moved){const r=tr.getBoundingClientRect(),w=r.width/3,x=Math.max(0,Math.min(r.width-w,e.clientX-r.left-w/2));th.style.transform=`translateX(${x/w*100}%)`;const i=Math.round(x/w);th.dataset.l=LEVELS[i];tr.querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on',j===i))}});
+  const end=e=>{if(!down)return;down=false;if(tr._moved){const r=tr.getBoundingClientRect(),w=r.width/3,x=Math.max(0,Math.min(r.width-w,e.clientX-r.left-w/2));const i=Math.round(x/w);tr.classList.remove('drag');setTimeout(()=>{tr._moved=false},0);setLevel(LEVELS[i])}};
+  tr.addEventListener('pointerup',end);tr.addEventListener('pointercancel',end);
 }
 function render(){renderLevel();renderHead();renderSide();renderChips();renderRight();$('#wspath').textContent=S.cfg.workspace}
 async function loadState(){const d=await api('/api/state');if(d.error)return;S.cfg=d.config;S.usage=d.usage;S.sessions=d.sessions;S.budget=d.budget;S.previewPort=d.preview_port;S.cores=d.cores;S.coreCap=d.core_cap;render()}
@@ -868,7 +896,7 @@ function drawSettings(){
   <div class="sec"><h3>${ic('folder')}Agent</h3><div class="g2"><label class="fld">Workspace folder (the agent can only touch this)<input id="f_ws" value="${esc(draft.workspace)}"></label>
    <label class="fld">Glass quality (this browser)<select id="f_fx"><option value="full" ${FX.mode==='full'?'selected':''}>Full: refraction and animated background (heavy)</option><option value="lite" ${FX.mode==='lite'?'selected':''}>Lite: soft glass, smooth and fast (recommended)</option><option value="off" ${FX.mode==='off'?'selected':''}>Off: plain flat look, no liquid glass (fastest)</option></select></label>
    <label class="fld">Water intro animation (this browser)<select id="f_intro"><option value="on" ${(()=>{try{return localStorage.getItem('ac-intro')!=='off'?'selected':''}catch(e){return'selected'}})()}>On</option><option value="off" ${(()=>{try{return localStorage.getItem('ac-intro')==='off'?'selected':''}catch(e){return''}})()}>Off</option></select></label>
-   <label class="fld">Working level<select id="f_lvl"><option value="low" ${draft.level==='low'?'selected':''}>Low: gentle, plain look, lowest priority</option><option value="balanced" ${(draft.level||'balanced')==='balanced'?'selected':''}>Balanced (default)</option><option value="high" ${draft.level==='high'?'selected':''}>High: full speed, full glass</option></select></label>
+   <label class="fld">Working level<select id="f_lvl"><option value="low" ${draft.level==='low'?'selected':''}>Low: gentle, plain look, lowest priority</option><option value="balanced" ${(draft.level||'balanced')==='balanced'?'selected':''}>Balanced (default)</option><option value="high" ${draft.level==='high'?'selected':''}>Max: full speed, full glass and live water</option></select></label>
    <label class="fld">Approval mode<select id="f_appr"><option value="ask" ${draft.approval==='ask'?'selected':''}>Ask for every change</option><option value="edits" ${draft.approval==='edits'?'selected':''}>Auto edits, ask for commands</option><option value="auto" ${draft.approval==='auto'?'selected':''}>Full auto</option></select></label></div></div>
   </div><div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn gold" id="saveCfg">${ic('check')}Save</button></div>`);
   const m=$('#modal');
@@ -913,7 +941,7 @@ function drawSettings(){
     const saved=await api('/api/config',noKeys({providers:{[dtab]:draft.providers[dtab]}}));if(saved.config)S.cfg=saved.config;
     const r=await api('/api/test',{provider:dtab,tier:+b.dataset.test});
     tr.style.color=r.ok?'var(--green)':'var(--red)';tr.textContent=r.ok?`Connected to ${r.model} in ${r.ms} ms${r.reply?' - it replied "'+r.reply+'"':''}`:(r.error||'Failed');renderHead();b.classList.remove('busy')});
-  $('#saveCfg').onclick=async()=>{collect();const fx=$('#f_fx'),itv=$('#f_intro');let reload=false;if(fx&&draft.level!==S.cfg.level&&fx.value===FX.mode){fx.value=LV_FX[draft.level]||fx.value;if(itv)itv.value=draft.level==='low'?'off':'on'}if(fx){const old=FX.mode;FX.mode=fx.value;try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}if((old==='off')!==(FX.mode==='off'))reload=true;FX.apply()}if(itv){try{localStorage.setItem('ac-intro',itv.value)}catch(e){}}const r=await api('/api/config',noKeys(draft));if(r.error){toast(r.error);return}S.cfg=r.config;S.usage=r.usage;closeModal();toast('Settings saved');if(reload){setTimeout(()=>location.reload(),350);return}render();loadTree();if(!S.sid)showHero()};
+  $('#saveCfg').onclick=async()=>{collect();const fx=$('#f_fx'),itv=$('#f_intro');let reload=false;if(fx&&draft.level!==S.cfg.level&&fx.value===FX.mode){fx.value=LV_FX[draft.level]||fx.value;if(itv)itv.value=draft.level==='low'?'off':'on'}if(fx){const old=FX.mode;FX.mode=fx.value;try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}if((old==='off')!==(FX.mode==='off'))reload=true;FX.apply()}if(itv){try{localStorage.setItem('ac-intro',itv.value)}catch(e){}}const r=await api('/api/config',noKeys(draft));if(r.error){toast(r.error);return}S.cfg=r.config;S.usage=r.usage;closeModal();toast('Settings saved');FX.apply();render();loadTree();if(!S.sid)showHero()};
 }
 
 /* ---------- first run: ask for the API key ---------- */
@@ -1133,7 +1161,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
     if(j.ui===undefined)return;if(uiV===null){uiV=j.ui;return}
     if(j.ui!==uiV&&!S.runId&&!$('#ov').classList.contains('show')&&!$('#welcome').classList.contains('show')&&!$('#ta').value.trim())location.reload();
   }).catch(()=>{}),3000);
-  await loadState();showHero();loadTree();if(needKey())openWelcome();
+  await loadState();FX.apply();showHero();loadTree();if(needKey())openWelcome();
   setInterval(()=>{if(!S.runId)loadState()},20000);
 })();
 
@@ -1209,6 +1237,53 @@ function thumb(box,id){
     if(p&&p.L!==L)th.animate([{transform:'scale(1)'},{transform:'scale(1.14,.86)',offset:.3},{transform:'scale(.97,1.07)',offset:.65},{transform:'scale(1)'}],{duration:600,easing:'ease-out'})});
   LASTPOS[id]={L,W};
 }
+
+/* ---------- live water floor for the Max level ---------- */
+const WATER={on:false,cv:null,gl:null,uT:null,uD:null,uL:null,uR:null,raf:0,t0:0,last:0,ema:33,frames:0,drops:[],nextAmbient:0,ptLast:0,
+  init(){
+    const cv=$('#waterbg');if(!cv)return false;
+    let gl=null;try{gl=cv.getContext('webgl',{antialias:false,alpha:false,powerPreference:'high-performance'})}catch(e){}if(!gl)return false;
+    const FS=`precision highp float;uniform vec2 R;uniform float T;uniform float L;uniform vec4 D[12];
+float hgt(vec2 p){float h=sin(p.x*3.1+T*1.1+sin(p.y*2.3+T*.7))*.010+sin(dot(p,vec2(.6,.8))*6.+T*1.7)*.006+sin(dot(p,vec2(-.8,.6))*11.+T*2.3)*.003;
+ for(int i=0;i<12;i++){float age=T-D[i].z;if(age>0.&&age<9.){float r=length(p-D[i].xy),x=r-age*.42;float env=exp(-age*1.05)*D[i].w/(1.+r*5.);h+=env*.05*sin(x*40.)*smoothstep(.04,-.02,x)*exp(x*3.);h+=D[i].w*.018*exp(-r*r*900.)*exp(-age*5.)*cos(age*32.);}}return h;}
+float caustic(vec2 uv,float t){vec2 p=mod(uv*6.28318,6.28318)-250.;vec2 i=p;float c=1.;float inten=.005;for(int n=0;n<4;n++){float tt=t*(1.-(3.5/float(n+1)));i=p+vec2(cos(tt-i.x)+sin(tt+i.y),sin(tt-i.y)+cos(tt+i.x));c+=1./length(vec2(p.x/(sin(i.x+tt)/inten),p.y/(cos(i.y+tt)/inten)));}c/=4.;c=1.17-pow(c,1.4);return pow(abs(c),8.);}
+void main(){vec2 uv=gl_FragCoord.xy/R;vec2 p=(gl_FragCoord.xy-.5*R)/R.y;float e=.004;
+ float dx=hgt(p+vec2(e,0.))-hgt(p-vec2(e,0.));float dy=hgt(p+vec2(0.,e))-hgt(p-vec2(0.,e));
+ vec3 n=normalize(vec3(-dx/(2.*e)*.9,-dy/(2.*e)*.9,1.));vec2 w=n.xy;float asp=R.x/R.y;vec2 fuv=uv-w*.035;
+ vec3 dk=mix(vec3(.04,.045,.055),vec3(.11,.12,.14),smoothstep(0.,1.,1.-length(p)*.8));vec3 lt=mix(vec3(.80,.82,.86),vec3(.92,.93,.96),smoothstep(0.,1.,1.-length(p)*.8));
+ vec3 col=mix(dk,lt,L);vec2 g=fract(vec2(fuv.x*asp,fuv.y)*9.);float tile=smoothstep(.0,.03,g.x)*smoothstep(.0,.03,g.y);col*=.82+.18*tile;
+ float c=caustic(fuv*vec2(asp,1.)*.55+w*.05,T*.5);col+=mix(vec3(.40,.44,.52)*.42,vec3(1.)*.22,L)*c;
+ vec3 Lg=normalize(vec3(-.4,.5,.75));vec3 H=normalize(Lg+vec3(0.,0.,1.));float spec=pow(max(dot(n,H),0.),110.);col+=mix(vec3(.92,.96,1.)*1.1,vec3(1.)*.9,L)*spec;
+ float fr=clamp((1.-n.z)*7.,0.,1.);col+=mix(vec3(.5,.55,.62)*.3,vec3(1.)*.25,L)*fr;gl_FragColor=vec4(pow(col,vec3(.95)),1.);}`;
+    const sh=(t,src)=>{const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);return gl.getShaderParameter(o,gl.COMPILE_STATUS)?o:null};
+    const vs=sh(gl.VERTEX_SHADER,'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'),fs=sh(gl.FRAGMENT_SHADER,FS);if(!vs||!fs)return false;
+    const pr=gl.createProgram();gl.attachShader(pr,vs);gl.attachShader(pr,fs);gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return false;gl.useProgram(pr);
+    const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+    const al=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+    this.uT=gl.getUniformLocation(pr,'T');this.uD=gl.getUniformLocation(pr,'D[0]');this.uL=gl.getUniformLocation(pr,'L');this.uR=gl.getUniformLocation(pr,'R');
+    this.cv=cv;this.gl=gl;this.resize();addEventListener('resize',()=>this.resize());
+    const addp=(e,amp)=>{if(!this.on)return;const H=innerHeight;this.drop((e.clientX-innerWidth/2)/H,-(e.clientY-H/2)/H,amp)};
+    addEventListener('pointermove',e=>{const n=performance.now();if(n-this.ptLast>130){this.ptLast=n;addp(e,.2)}},{passive:true});
+    addEventListener('pointerdown',e=>addp(e,.8),{passive:true});
+    return true},
+  resize(){if(!this.cv)return;const s=Math.min(1,960/innerWidth);const w=Math.max(320,Math.round(innerWidth*s*.7)),h=Math.max(180,Math.round(innerHeight*s*.7));this.cv.width=w;this.cv.height=h;this.gl.viewport(0,0,w,h);this.gl.uniform2f(this.uR,w,h)},
+  drop(x,y,amp){const T=(performance.now()-this.t0)/1000;this.drops.push([x,y,T,amp]);if(this.drops.length>12)this.drops.shift()},
+  frame(now){
+    this.raf=requestAnimationFrame(t=>this.frame(t));
+    if(now-this.last<30)return;const dt=now-this.last;this.last=now;if(dt>400)return;this.ema=this.ema*.92+dt*.08;this.frames++;
+    const T=(performance.now()-this.t0)/1000;
+    if(T>this.nextAmbient){this.drop((Math.random()-.5)*1.6,(Math.random()-.5)*.8,.55);this.nextAmbient=T+2.4+Math.random()*2.2}
+    const D=new Float32Array(48);for(let i=0;i<12;i++)D[i*4+2]=999;this.drops.forEach((d,i)=>{D[i*4]=d[0];D[i*4+1]=d[1];D[i*4+2]=d[2];D[i*4+3]=d[3]});
+    const gl=this.gl;gl.uniform1f(this.uT,T);gl.uniform4fv(this.uD,D);gl.uniform1f(this.uL,document.documentElement.dataset.theme==='light'?1:0);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    if(this.frames>120&&this.ema>62){this.frames=0;this.set(false);toast('Max was too heavy for this PC, so Aqua went back to Balanced');setLevel('balanced')}},
+  set(on){
+    if(on===this.on)return;
+    if(on){if(!this.gl&&!this.init()){toast('This browser cannot draw the water, using Balanced');setTimeout(()=>setLevel('balanced'),0);return}
+      this.on=true;this.t0=performance.now();this.last=0;this.ema=33;this.frames=0;this.drops=[];this.nextAmbient=.3;this.cv.style.display='block';document.documentElement.dataset.water='on';this.frame(performance.now())}
+    else{this.on=false;cancelAnimationFrame(this.raf);if(this.cv)this.cv.style.display='none';document.documentElement.dataset.water='off'}},
+  sync(){this.set(!!(S.cfg&&S.cfg.level==='high')&&FX.mode!=='off')}
+};
+const _fxApply=FX.apply;FX.apply=function(){_fxApply();WATER.sync()};
 setTimeout(FX.apply,50);setTimeout(FX.apply,600);addEventListener('load',()=>setTimeout(FX.apply,100));
 </script>
 </body>
