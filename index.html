@@ -315,7 +315,9 @@ pre.out{border-radius:12px;background:var(--code);margin-top:8px}
 .airow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 10px;border-radius:15px;border:1px solid transparent;transition:background .2s}
 .airow:hover{background:var(--g1)}.airow.on{background:var(--g1);border-color:var(--gb2)}
 .airow .aitx{flex:1}.aist{font-size:11px;color:var(--amber);font-weight:650;white-space:nowrap}.aist.ok{color:var(--green)}
-.aifoot{display:flex;gap:8px;padding:8px 6px 4px;border-top:1px solid var(--gb2);margin-top:6px}
+.aifoot{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 6px 4px;border-top:1px solid var(--gb2);margin-top:6px}
+.aifoot .btn{width:100%;height:auto;min-height:38px;justify-content:flex-start;text-align:left;white-space:normal;line-height:1.2;font-size:12.5px;padding-top:7px;padding-bottom:7px}
+.aifoot #aiRally{grid-column:1/-1;justify-content:center}
 .ask .askq{margin:10px 0 4px}.ask .aq{font-weight:600;margin-bottom:7px}.ask .opts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:7px}
 .ask .opt.on{background:var(--tx);color:var(--bg,#111);box-shadow:0 0 0 2px var(--teal,#4fd1c5)}
 .ask .aother{width:100%;box-sizing:border-box;background:rgba(127,127,127,.1);border:1px solid rgba(127,127,127,.3);border-radius:12px;padding:8px 12px;color:var(--tx);font:inherit;outline:0}
