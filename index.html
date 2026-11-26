@@ -529,7 +529,7 @@ void main(){
     <div class="brand"><div class="logo"><svg class="i"><use href="#i-logo"/></svg></div><div><b>Aqua Code</b><small>your own coding agent</small></div></div>
     <div class="side-sec"><button class="btn gold" id="newChat" style="justify-content:center"><svg class="i"><use href="#i-plus"/></svg>New task</button></div>
     <div class="side-sec" style="flex:1"><div class="lbl">Tasks</div><div class="sess" id="sess"></div></div>
-    <div class="side-sec"><div class="lbl">Workspace <button class="btn ic" id="reftree" title="Refresh" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-refresh"/></svg></button></div>
+    <div class="side-sec"><div class="lbl">Workspace <button class="btn ic" id="notesBtn" title="Project notes: what every AI did" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-file"/></svg></button><button class="btn ic" id="reftree" title="Refresh" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-refresh"/></svg></button></div>
       <div class="ws" id="wspath">-</div><div class="tree" id="tree"></div><div class="mut" style="font-size:11px;text-align:center;padding:4px 0 2px;letter-spacing:.4px">Made by Saad</div></div>
   </aside>
 
@@ -624,7 +624,7 @@ function setStatus(t){clearStatus();const d=el(`<div class="dots"><span></span><
 function addUser(t){clearHero();add(el(`<div class="bub">${esc(t)}</div>`,'msg user'))}
 function chipFor(ev){const n=(S.cur&&S.cur.n)||tiers().length;return `<span class="chip" style="color:${tcol(ev.tier,n)}"><i></i>${esc(ev.name)}</span>`}
 function addAssistant(ev){add(el(`<div class="who">${ev.provider?`<b style="color:var(--tx)">${esc(ev.provider)}</b>`:''}${chipFor(ev)}<span>${esc(ev.model)}</span><span>${fm(ev.cost||0)}</span></div><div class="bub">${md(ev.text)}</div>`,'msg ai'))}
-const TM={list_dir:['folder',a=>'List '+(a.path||'.')],read_file:['file',a=>'Read '+a.path+(a.start_line?' lines '+a.start_line+'-'+(a.end_line||'end'):'')],write_file:['edit',a=>'Write '+a.path],edit_file:['edit',a=>'Edit '+a.path],search:['search',a=>'Search "'+a.pattern+'"'+(a.path?' in '+a.path:'')],run_command:['term',a=>a.command||''],start_server:['browser',a=>'Start server: '+(a.command||'')],request_stronger_model:['bolt',a=>'Asked for a stronger model']};
+const TM={list_dir:['folder',a=>'List '+(a.path||'.')],read_file:['file',a=>'Read '+a.path+(a.start_line?' lines '+a.start_line+'-'+(a.end_line||'end'):'')],write_file:['edit',a=>'Write '+a.path],edit_file:['edit',a=>'Edit '+a.path],search:['search',a=>'Search "'+a.pattern+'"'+(a.path?' in '+a.path:'')],run_command:['term',a=>a.command||''],start_server:['browser',a=>'Start server: '+(a.command||'')],add_note:['edit',a=>'Note for the next AI: '+String(a.text||'').slice(0,70)],request_stronger_model:['bolt',a=>'Asked for a stronger model']};
 function toolBody(name,a){
   if(name==='edit_file')return `<div class="diff">${String(a.old||'').split('\n').map(l=>`<div class="d">- ${esc(l)}</div>`).join('')}${String(a.new||'').split('\n').map(l=>`<div class="a">+ ${esc(l)}</div>`).join('')}</div>`;
   if(name==='write_file')return `<div class="code"><div class="code-h"><span>${esc(a.path)}</span><button data-copy>Copy</button></div><pre><code>${esc(String(a.content||'').split('\n').slice(0,60).join('\n'))}</code></pre></div>`;
@@ -1149,6 +1149,14 @@ $('#send').onclick=send;$('#newChat').onclick=newChat;$('#setBtn').onclick=openS
 $('#escBtn').onclick=async()=>{await api('/api/escalate',{run:S.runId});toast('Will hand over to the next model on the next step')};
 $('#appr').onchange=async e=>{const r=await api('/api/config',{approval:e.target.value});S.cfg=r.config;toast('Approval: '+e.target.selectedOptions[0].text)};
 $('#reftree').onclick=loadTree;
+async function showNotes(){
+  const d=await api('/api/notes');const txt=(d.notes||'').trim();
+  showModal(`<div class="modal-h"><h2>Project notes</h2><button class="btn pill ic" data-close>${ic('x')}</button></div><div class="modal-b"><p class="hint" style="margin:0;color:var(--mut);font-size:13px">Every AI that works on this project (and Aqua itself) adds a note here, and the next AI reads it first, so switching models never loses what happened. The file lives in your workspace: <span class="mono">.aqua/NOTES.md</span></p>
+    <div class="code"><div class="code-h"><span>NOTES.md</span><button data-copy>Copy</button></div><pre style="max-height:56vh"><code>${esc(txt||'No notes yet. They appear after the first task.')}</code></pre></div></div>
+    <div class="modal-f"><button class="btn ghost" id="notesClear"${txt?'':' disabled'}>Clear notes</button><button class="btn gold" data-close>Close</button></div>`,'viewer');
+  const c=$('#notesClear');if(c)c.onclick=async()=>{if(!confirm('Clear all project notes? The AIs will start without any memory of this project.'))return;await api('/api/notes/clear',{});toast('Notes cleared');showNotes()};
+}
+$('#notesBtn').onclick=showNotes;
 $('#openLeft').onclick=()=>$('#left').classList.toggle('show');
 $('#openRight').onclick=()=>$('#right').classList.add('show');$('#closeRight').onclick=()=>$('#right').classList.remove('show');
 function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('ac-theme',t)}catch(e){}$('#themeBtn').innerHTML=ic(t==='dark'?'sun':'moon')}

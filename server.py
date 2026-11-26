@@ -442,6 +442,8 @@ TOOLS = [
     {"type": "function", "function": {"name": "run_command", "description": "Run a PowerShell command in the workspace (build, test, run scripts).",
      "parameters": {"type": "object", "properties": {"command": {"type": "string"}, "timeout": {"type": "integer"}},
                     "required": ["command"]}}},
+    {"type": "function", "function": {"name": "add_note", "description": "Save a short note about what you did, decisions, problems or next steps, so any other AI that continues this project knows what happened.",
+     "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
     {"type": "function", "function": {"name": "start_server", "description": "Start a long-running dev server in the background (e.g. python -m http.server 8000, npm run dev) and show it in the Preview pane. Use run_command for anything that finishes.",
      "parameters": {"type": "object", "properties": {"command": {"type": "string"}, "port": {"type": "integer", "description": "Port the server listens on, if known"}}, "required": ["command"]}}},
     {"type": "function", "function": {"name": "request_stronger_model", "description": "Hand the task to a stronger (more expensive) model when you are stuck or the task is too hard.",
@@ -452,7 +454,7 @@ DENY = re.compile(r"(?i)(format-volume|diskpart|bcdedit|shutdown|restart-compute
                   r"\breg(\.exe)?\s+(add|delete)|remove-item\s+[^|;]*-recurse[^|;]*\s[a-z]:\\?\s*($|[;|])|"
                   r"\brmdir\s+/s\s+[a-z]:\\?\s*$|\bdel\s+/[sfq]+\s+[a-z]:\\|"
                   r"\brm\s+-[a-z]*[rf][a-z]*\s+(/|~|\*)(\s|$)|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{)")
-SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".idea", ".vs"}
+SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".idea", ".vs", ".aqua"}
 
 
 class ToolErr(Exception):
@@ -621,7 +623,7 @@ def tool_run_command(ws, a):
     return "Exit code 0\n" + out
 
 
-TOOL_FUNCS = {"start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
+TOOL_FUNCS = {"add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
               "edit_file": tool_edit_file, "search": tool_search, "run_command": tool_run_command}
 
 
@@ -667,14 +669,63 @@ class Run:
                 del self.sess["events"][:300]
 
 
+# --------------------------------------------------------------------------- project notes shared by every AI
+NOTES_DIR = ".aqua"
+NOTES_MAX = 24000
+
+
+def notes_path(ws):
+    return os.path.join(ws, NOTES_DIR, "NOTES.md")
+
+
+def read_notes(ws, limit=5000):
+    try:
+        with open(notes_path(ws), "r", encoding="utf-8") as f:
+            txt = f.read()
+    except OSError:
+        return ""
+    return txt if len(txt) <= limit else "...(older notes trimmed)\n" + txt[txt.find("\n## ", len(txt) - limit) + 1:] if "\n## " in txt[len(txt) - limit:] else txt[-limit:]
+
+
+def append_note(ws, who, text):
+    """Every AI (and Aqua itself) leaves a short note, so whoever works on the project next knows what happened."""
+    text = (text or "").strip()
+    if not text:
+        return
+    try:
+        os.makedirs(os.path.join(ws, NOTES_DIR), exist_ok=True)
+        p = notes_path(ws)
+        head = "# Project notes\nWritten by the AIs that worked on this project, newest last.\n\n"
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                old = f.read()
+        except OSError:
+            old = head
+        new = old + "## %s - %s\n%s\n\n" % (time.strftime("%Y-%m-%d %H:%M"), who, text[:1800])
+        if len(new) > NOTES_MAX:
+            cut = new.find("\n## ", len(new) - int(NOTES_MAX * 0.7))
+            new = head + new[cut + 1:] if cut >= 0 else head + new[-int(NOTES_MAX * 0.7):]
+        with open(p, "w", encoding="utf-8", newline="\n") as f:
+            f.write(new)
+    except OSError:
+        pass
+
+
 def system_prompt(ws):
-    return ("You are Aqua Code, an autonomous coding agent working inside the user's workspace folder on %s. "
+    base = ("You are Aqua Code, an autonomous coding agent working inside the user's workspace folder on %s. "
             "Workspace: %s\n"
             "Work like a careful senior engineer: look before you edit, prefer small exact edit_file changes over "
             "rewriting files, and verify by running the code or tests with run_command when that makes sense. "
             "All paths are relative to the workspace. For a plain web page just write index.html in the workspace: it is shown live in the user's Preview pane and reloads when you edit it. For frameworks use start_server. Keep prose short. If the task is beyond you or you keep "
-            "failing, call request_stronger_model with a reason instead of guessing. When the work is complete, "
-            "answer with a brief summary and no tool call." % ("Windows (PowerShell)" if os.name == "nt" else "Linux/macOS (bash)", ws))
+            "failing, call request_stronger_model with a reason instead of guessing. Other AIs may work on this project after you "
+            "(the user switches models and providers), so when the work is complete call add_note once with 1-3 short lines "
+            "(what you did, what is left, anything the next AI must know), then answer with a brief summary and no tool call."
+            % ("Windows (PowerShell)" if os.name == "nt" else "Linux/macOS (bash)", ws))
+    notes = read_notes(ws)
+    if notes:
+        base += ("\n\n--- PROJECT NOTES (written by earlier AIs and by Aqua; they tell you what already happened, so trust them "
+                 "and do not redo finished work) ---\n" + notes + "\n--- END OF NOTES ---")
+    return base
 
 
 def new_session(title="New chat"):
@@ -741,6 +792,9 @@ def exec_tool(run, cfg, name, args):
     fn = TOOL_FUNCS.get(name)
     if not fn:
         return "Unknown tool: %s" % name, True, None
+    if name == "add_note":
+        append_note(ws, getattr(run, "who", "an AI"), str(args.get("text", "")))
+        return "Note saved for the next AI.", False, None
     needs = (name in ("run_command", "start_server") and cfg["approval"] in ("ask", "edits")) or \
             (name in WRITE_TOOLS and cfg["approval"] == "ask")
     if needs:
@@ -816,6 +870,8 @@ def agent_loop(run, user_text, forced_tier):
     run_cost = 0.0
     steps = 0
     status = "done"
+    acts = {"files": [], "cmds": [], "errors": [], "ais": []}
+    last_text = ""
 
     free = bool(cfg["providers"][pid].get("free"))
     blocked = set()                       # (provider, tier) pairs that hit a limit during this run
@@ -828,6 +884,7 @@ def agent_loop(run, user_text, forced_tier):
         nonlocal ti, steps_here, errs
         up = j > ti
         run.emit("escalate", frm=ti, to=j, reason=reason, model=tiers[j]["model"], name=tiers[j]["name"], up=up)
+        append_note(cfg["workspace"], "Aqua", "Handed over from %s to %s (%s)." % (tiers[ti]["model"], tiers[j]["model"], reason))
         messages.append({"role": "user", "content": "[aqua note] Switched from %s to %s (%s). Review the work so far, "
                          "fix what failed, and continue the task." % (tiers[ti]["name"], tiers[j]["name"], reason)})
         ti = j
@@ -870,6 +927,7 @@ def agent_loop(run, user_text, forced_tier):
             ti = min(ok[0], top)
             steps_here = errs = 0
             run.emit("failover", frm=old, to=plabel, reason=reason, model=tiers[ti]["model"], name=tiers[ti]["name"])
+            append_note(cfg["workspace"], "Aqua", "Switched AI from %s to %s (%s). Continue from the notes and the chat history." % (old, plabel, reason))
             messages.append({"role": "user", "content": "[aqua note] Switched AI from %s to %s (%s). Review the work so far, "
                              "fix what failed, and continue the task." % (old, plabel, reason)})
             return True
@@ -895,6 +953,9 @@ def agent_loop(run, user_text, forced_tier):
                 run.emit("error", text="Every connected AI has used up its limit for now. Free limits reset at midnight (Gemini: Pacific time, OpenRouter: UTC). Connect another free provider in the AI menu to keep going.")
                 status = "limit"
                 break
+            run.who = "%s / %s" % (plabel, tiers[ti]["model"])
+            if run.who not in acts["ais"]:
+                acts["ais"].append(run.who)
             run.emit("model", tier=ti, name=tiers[ti]["name"], model=tiers[ti]["model"], tiers=len(tiers), provider=plabel)
             run.emit("status", persist=False, text="%s - %s is working" % (plabel, tiers[ti]["model"]))
             try:
@@ -943,6 +1004,7 @@ def agent_loop(run, user_text, forced_tier):
                 am["tool_calls"] = calls
             messages.append(am)
             if am["content"].strip():
+                last_text = am["content"].strip()
                 run.emit("text", text=am["content"], tier=ti, model=tiers[ti]["model"], name=tiers[ti]["name"], cost=cost, provider=plabel)
             if not calls:
                 break
@@ -977,6 +1039,12 @@ def agent_loop(run, user_text, forced_tier):
                 if sigs[-6:].count(sig) >= 3 and name != "run_command":
                     out += "\n[aqua] You repeated this exact call 3 times. Change approach."
                     err = True
+                if name in WRITE_TOOLS and not err and args.get("path") and args["path"] not in acts["files"]:
+                    acts["files"].append(args["path"])
+                if name in ("run_command", "start_server"):
+                    acts["cmds"].append("%s (%s)" % (str(args.get("command", ""))[:70], "failed" if err else "ok"))
+                if err and name != "add_note" and len(acts["errors"]) < 4:
+                    acts["errors"].append("%s: %s" % (name, out.strip().split("\n")[0][:110]))
                 if err:
                     step_err = True
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": out[:12000]})
@@ -1007,6 +1075,16 @@ def agent_loop(run, user_text, forced_tier):
         done_ids = {m.get("tool_call_id") for m in messages if m["role"] == "tool"}
         for i in pend - done_ids:
             messages.append({"role": "tool", "tool_call_id": i, "content": "Cancelled by user."})
+    if acts["files"] or acts["cmds"] or acts["errors"] or last_text:
+        lines = ["Request: " + user_text.strip().replace("\n", " ")[:240], "Worked on by: " + " -> ".join(acts["ais"] or [plabel])]
+        if acts["files"]:
+            lines.append("Files written or edited: " + ", ".join(acts["files"][:12]))
+        if acts["cmds"]:
+            lines.append("Commands: " + "; ".join(acts["cmds"][:6]))
+        if acts["errors"]:
+            lines.append("Problems met: " + " | ".join(acts["errors"]))
+        lines.append("Outcome: %s. %s" % (status, last_text.replace("\n", " ")[:300]))
+        append_note(cfg["workspace"], "Aqua (automatic log)", "\n".join(lines))
     sess["tier"] = ti
     run.emit("done", status=status, tier=ti, run_cost=run_cost, steps=steps, session_cost=sess.get("cost", 0.0),
              tier_name=tiers[ti]["name"], model=tiers[ti]["model"], provider=plabel, usage=usage_snapshot(cfg))
@@ -1451,6 +1529,8 @@ class H(BaseHTTPRequestHandler):
                     return self._send(404, {"error": "not found"})
                 with open(fp, "rb") as f:
                     return self._send(200, f.read(), ct)
+            if u.path == "/api/notes":
+                return self._send(200, {"notes": read_notes(load_cfg()["workspace"], 60000), "path": notes_path(load_cfg()["workspace"])})
             if u.path == "/api/servers":
                 return self._send(200, {"servers": servers_list()})
             if u.path == "/api/models":
@@ -1555,6 +1635,12 @@ class H(BaseHTTPRequestHandler):
                 if r:
                     r.force_escalate = True
                 return self._send(200, {"ok": bool(r)})
+            if u.path == "/api/notes/clear":
+                try:
+                    os.remove(notes_path(load_cfg()["workspace"]))
+                except OSError:
+                    pass
+                return self._send(200, {"ok": True})
             if u.path == "/api/servers/stop":
                 return self._send(200, {"ok": stop_server(b.get("id"))})
             if u.path == "/api/models/sync":

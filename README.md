@@ -89,6 +89,9 @@ The **Preview** button opens a live pane next to the chat (drag its edge to resi
 - Type any address: `3000`, `localhost:5173`, or a website. Desktop, tablet and phone sizes, back, forward, reload, and open-in-browser are built in.
 - Some websites refuse to be shown inside other apps. Use the open-in-browser button for those.
 
+## Project notes (every AI remembers what happened)
+
+Aqua keeps a shared notebook for each project at `.aqua/NOTES.md` inside your workspace (open it with the file button in the sidebar). After each task Aqua adds an automatic log (the request, which AI did it, files changed, commands run, problems, outcome), every AI can also save its own note with the `add_note` tool (what it did, what is left), and every switch between models or providers is logged. The latest notes are put in front of **every** AI on every call, so when Gemini runs out and Groq takes over, or you start a new chat, the next AI already knows what happened. You can read or clear the notes any time.
 ## How it saves credit
 
 Every task starts on the **cheapest** model and only moves up when the cheap one struggles:
