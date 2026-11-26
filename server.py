@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import platform
+import shutil
 import signal
 import time
 import traceback
@@ -442,6 +443,14 @@ TOOLS = [
     {"type": "function", "function": {"name": "run_command", "description": "Run a PowerShell command in the workspace (build, test, run scripts).",
      "parameters": {"type": "object", "properties": {"command": {"type": "string"}, "timeout": {"type": "integer"}},
                     "required": ["command"]}}},
+    {"type": "function", "function": {"name": "scaffold_3d", "description": "Install the 3D kit (Python model builder aqua3d, viewer, example, three.js) into the workspace. Call once before modelling.",
+     "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "show_3d", "description": "Open a .glb/.gltf/.obj/.stl file from the workspace in the 3D viewer in the user's Preview pane.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "e.g. models/house.glb"}}, "required": ["path"]}}},
+    {"type": "function", "function": {"name": "search_3d_models", "description": "Search free ready-made 3D models (Khronos glTF samples and three.js examples). Returns download URLs.",
+     "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "download_3d_model", "description": "Download a .glb/.gltf/.obj/.stl from an allowed site (GitHub, threejs.org...) into models/.",
+     "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "name": {"type": "string"}}, "required": ["url"]}}},
     {"type": "function", "function": {"name": "add_note", "description": "Save a short note about what you did, decisions, problems or next steps, so any other AI that continues this project knows what happened.",
      "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
     {"type": "function", "function": {"name": "start_server", "description": "Start a long-running dev server in the background (e.g. python -m http.server 8000, npm run dev) and show it in the Preview pane. Use run_command for anything that finishes.",
@@ -623,7 +632,7 @@ def tool_run_command(ws, a):
     return "Exit code 0\n" + out
 
 
-TOOL_FUNCS = {"add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
+TOOL_FUNCS = {"scaffold_3d": lambda ws, a: None, "show_3d": lambda ws, a: None, "search_3d_models": lambda ws, a: None, "download_3d_model": lambda ws, a: None, "add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
               "edit_file": tool_edit_file, "search": tool_search, "run_command": tool_run_command}
 
 
@@ -717,7 +726,7 @@ def append_note(ws, who, text):
         pass
 
 
-def system_prompt(ws):
+def system_prompt(ws, extra=""):
     base = ("You are Aqua Code, an autonomous coding agent working inside the user's workspace folder on %s. "
             "Workspace: %s\n"
             "Work like a careful senior engineer: look before you edit, prefer small exact edit_file changes over "
@@ -729,6 +738,7 @@ def system_prompt(ws):
             "This workspace is ONE separate project: use only its files and the notes below. Never assume details from other projects, "
             "folders or earlier chats about something else; if the user wants another project's notes they will import them."
             % ("Windows (PowerShell)" if os.name == "nt" else "Linux/macOS (bash)", ws))
+    base += extra
     notes = read_notes(ws)
     if notes:
         base += ("\n\n--- PROJECT NOTES (written by earlier AIs and by Aqua; they tell you what already happened, so trust them "
@@ -782,7 +792,7 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
     t = tiers[ti]
     if not t["model"]:
         raise LLMError(400, "No model name is set for the %s tier. Open Settings, Provider and models, and pick one." % t["name"])
-    payload = {"model": t["model"], "messages": [{"role": "system", "content": system_prompt(cfg["workspace"])}] +
+    payload = {"model": t["model"], "messages": [{"role": "system", "content": system_prompt(cfg["workspace"], THREED_PROMPT if wants_3d(messages, cfg["workspace"]) else "")}] +
                clean_messages(messages, t["model"]), "tools": TOOLS}
     url = prov["base"].rstrip("/") + "/chat/completions"
     delays = [3, 8, 20]
@@ -807,7 +817,7 @@ def exec_tool(run, cfg, name, args):
     if name == "add_note":
         append_note(ws, getattr(run, "who", "an AI"), str(args.get("text", "")))
         return "Note saved for the next AI.", False, None
-    needs = (name in ("run_command", "start_server") and cfg["approval"] in ("ask", "edits")) or \
+    needs = (name in ("run_command", "start_server", "download_3d_model") and cfg["approval"] in ("ask", "edits")) or \
             (name in WRITE_TOOLS and cfg["approval"] == "ask")
     if needs:
         aid = uuid.uuid4().hex[:8]
@@ -824,6 +834,14 @@ def exec_tool(run, cfg, name, args):
     try:
         if name == "start_server":
             return tool_start_server(run, ws, args), False, None
+        if name == "scaffold_3d":
+            return tool_scaffold_3d(ws), False, None
+        if name == "show_3d":
+            return tool_show_3d(run, ws, args), False, None
+        if name == "search_3d_models":
+            return tool_search_3d(args), False, None
+        if name == "download_3d_model":
+            return tool_download_3d(ws, args), False, None
         out = fn(ws, args)
         if name in WRITE_TOOLS and PREVIEW_PORT and str(args.get("path", "")).lower().endswith((".html", ".htm")):
             run.emit("preview", url="http://127.0.0.1:%d/%s" % (PREVIEW_PORT, str(args["path"]).replace("\\", "/").lstrip("/")), auto=True)
@@ -1495,6 +1513,141 @@ def tool_start_server(run, ws, a):
         run.emit("preview", url=url, cmd=cmd, auto=False)
         return "Server running at %s and opened in the Preview pane. It keeps running in the background.\n%s" % (url, out)
     return ("The process is running but no URL was detected yet. Pass the port in the 'port' argument next time. Output so far:\n%s" % (out or "(none)"))
+
+
+# --------------------------------------------------------------------------- 3D: make models, find free models, look at them
+ASSETS_3D = os.path.join(ROOT, "assets", "3d")
+MODEL_HOSTS = ("raw.githubusercontent.com", "github.com", "objects.githubusercontent.com", "threejs.org", "cdn.jsdelivr.net", "modelviewer.dev")
+MODEL_EXT = (".glb", ".gltf", ".obj", ".stl")
+_khr = {"t": 0.0, "data": []}
+THREEJS_MODELS = [("Soldier", "Soldier.glb", "animated soldier character"), ("Horse", "Horse.glb", "animated horse"), ("Flamingo", "Flamingo.glb", "animated flamingo bird"),
+                  ("Parrot", "Parrot.glb", "animated parrot bird"), ("Stork", "Stork.glb", "animated stork bird"), ("RobotExpressive", "RobotExpressive/RobotExpressive.glb", "animated cartoon robot"),
+                  ("LittlestTokyo", "LittlestTokyo.glb", "tiny Tokyo city diorama"), ("Xbot", "Xbot.glb", "humanoid robot character")]
+THREED_PROMPT = (
+    "\n\n3D MODELING. You can really make 3D models and use free ready-made ones. Workflow: "
+    "(1) call scaffold_3d once: it puts a 3D kit in the workspace (3d/aqua3d.py, 3d/viewer.html, 3d/example.py, 3d/README.md, models/). "
+    "(2) read_file 3d/README.md and 3d/example.py first. "
+    "(3) write a Python script that does `import sys; sys.path.insert(0, '3d'); from aqua3d import Scene`, builds the model from MANY well-proportioned parts "
+    "(box, sphere, cylinder, cone, torus, extrude, lathe, groups) with a small colour palette, and saves models/<name>.glb (also .obj/.stl if asked); run it with run_command from the workspace root. "
+    "PATHS: run_command runs in the workspace root, so a script in the root saves to 'models/x.glb' (NOT '../models'); only a script inside 3d/ run from there uses '../models/x.glb'. "
+    "(4) call show_3d on the file so the user sees it in the Preview pane; check s.report() sizes, make sure nothing floats or sinks into the ground, and fix problems. "
+    "(5) for complex organic or realistic things (animals, people, cars, furniture sets) do NOT model them from scratch: call search_3d_models, then download_3d_model, and tell the user the licence to check. "
+    "(6) for interactive 3D web pages (games, product viewers, scenes) write HTML that imports three.js from the local copy "
+    "(<script type=\"importmap\">{\"imports\":{\"three\":\"./3d/vendor/three.module.min.js\",\"three/addons/\":\"./3d/vendor/addons/\"}}</script>) and show it in the Preview. "
+    "Quality matters: real proportions, details, a consistent style, and tell the user honestly what you made.")
+_3D_WORDS = re.compile(r"\b(3d|3-d|three\.?js|webgl|glb|gltf|stl|blender|mesh|meshes|model(?:l?ing)|sculpt|voxel|low[- ]?poly)\b", re.I)
+
+
+def wants_3d(messages, ws):
+    if os.path.isfile(os.path.join(ws, "3d", "aqua3d.py")):
+        return True
+    users = [m.get("content") or "" for m in messages if m.get("role") == "user"][-4:]
+    return any(_3D_WORDS.search(u) for u in users if isinstance(u, str))
+
+
+def _http_bytes(url, limit=40 * 1024 * 1024, timeout=60):
+    req = urllib.request.Request(url, headers={"User-Agent": "aqua-code/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        host = (urlparse(r.geturl()).hostname or "").lower()
+        if host not in MODEL_HOSTS and not host.endswith(".githubusercontent.com"):
+            raise ToolErr("The download was redirected to a site that is not allowed: %s" % host)
+        data = r.read(limit + 1)
+    if len(data) > limit:
+        raise ToolErr("That file is bigger than %d MB." % (limit // (1024 * 1024)))
+    return data
+
+
+def tool_scaffold_3d(ws):
+    if not os.path.isdir(ASSETS_3D):
+        raise ToolErr("The 3D kit is missing from this Aqua install (assets/3d).")
+    dst, new = os.path.join(ws, "3d"), 0
+    for root, dirs, files in os.walk(ASSETS_3D):
+        rel = os.path.relpath(root, ASSETS_3D)
+        for f in files:
+            out = os.path.join(dst, "" if rel == "." else rel, f)
+            if os.path.exists(out):
+                continue                                   # never overwrite the user's or the AI's edits
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            shutil.copy2(os.path.join(root, f), out)
+            new += 1
+    os.makedirs(os.path.join(ws, "models"), exist_ok=True)
+    return ("3D kit ready (%d files added) in 3d/. Read 3d/README.md and 3d/example.py, then write a script using aqua3d and save to models/<name>.glb. "
+            "Run `python 3d/example.py` to see a finished house. Show models with show_3d." % new)
+
+
+def tool_show_3d(run, ws, a):
+    rel = str(a.get("path") or "").replace("\\", "/").lstrip("/")
+    p = safe_path(ws, rel)
+    if not os.path.isfile(p) or not rel.lower().endswith(MODEL_EXT):
+        raise ToolErr("No 3D file at %s (expected .glb, .gltf, .obj or .stl)." % rel)
+    if not os.path.isfile(os.path.join(ws, "3d", "viewer.html")):
+        tool_scaffold_3d(ws)
+    if not PREVIEW_PORT:
+        raise ToolErr("The preview server is not running.")
+    url = "http://127.0.0.1:%d/3d/viewer.html?m=../%s" % (PREVIEW_PORT, rel)
+    run.emit("preview", url=url, cmd="3D viewer", auto=False)
+    return "Opened %s in the Preview pane (orbit with the mouse, wireframe and auto-rotate buttons)." % rel
+
+
+def _khronos():
+    if not _khr["data"] or time.time() - _khr["t"] > 3600:
+        req = urllib.request.Request("https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/model-index.json", headers={"User-Agent": "aqua-code/1.0"})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            _khr["data"] = json.loads(r.read().decode("utf-8"))
+        _khr["t"] = time.time()
+    return _khr["data"]
+
+
+def tool_search_3d(a):
+    q = [w for w in re.split(r"\W+", str(a.get("query") or "").lower()) if w]
+    rows = []
+    try:
+        for m in _khronos():
+            glb = (m.get("variants") or {}).get("glTF-Binary")
+            if not glb:
+                continue
+            hay = (m.get("name", "") + " " + m.get("label", "") + " " + " ".join(m.get("tags", []))).lower()
+            sc = sum(1 for w in q if w in hay)
+            if sc or not q:
+                rows.append((sc, "%s (%s) [%s]\n   %s  - Khronos glTF sample asset, check its licence file in the repo" % (
+                    m.get("label") or m["name"], m["name"], ", ".join(m.get("tags", [])[:4]),
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/%s/glTF-Binary/%s" % (m["name"], glb))))
+    except Exception as e:
+        rows.append((0, "(Khronos list unavailable: %s)" % e))
+    for name, path, desc in THREEJS_MODELS:
+        hay = (name + " " + desc).lower()
+        sc = sum(1 for w in q if w in hay)
+        if sc or not q:
+            rows.append((sc, "%s - %s\n   https://threejs.org/examples/models/gltf/%s  - three.js example model, licence varies (check three.js)" % (name, desc, path)))
+    rows.sort(key=lambda r: -r[0])
+    if not rows:
+        return "No free model matched. Try simple words such as chair, car, helmet, lantern, duck, robot, tree, bottle, boat. Or build it with aqua3d."
+    return "Free 3D models (pick one, then call download_3d_model with its URL):\n" + "\n".join(r[1] for r in rows[:12])
+
+
+def tool_download_3d(ws, a):
+    url = str(a.get("url") or "").strip()
+    pu = urlparse(url)
+    if pu.scheme != "https" or (pu.hostname or "").lower() not in MODEL_HOSTS:
+        raise ToolErr("Only https downloads from these sites are allowed: %s" % ", ".join(MODEL_HOSTS))
+    name = re.sub(r"[^\w.\- ]", "_", str(a.get("name") or os.path.basename(pu.path) or "model.glb"))
+    if not name.lower().endswith(MODEL_EXT):
+        raise ToolErr("Only %s files can be downloaded." % ", ".join(MODEL_EXT))
+    data = _http_bytes(url)
+    dest = safe_path(ws, "models/" + name)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "wb") as f:
+        f.write(data)
+    mp = os.path.join(os.path.dirname(dest), "models.json")
+    try:
+        with open(mp, "r", encoding="utf-8") as f:
+            man = json.load(f)
+    except Exception:
+        man = []
+    man = [m for m in man if m.get("file") != name] + [{"file": name, "source": url}]
+    with open(mp, "w", encoding="utf-8") as f:
+        json.dump(man, f, indent=1)
+    return "Downloaded %s (%.1f MB) to models/%s. Call show_3d to look at it. Tell the user the source and that its licence must be checked before reuse." % (name, len(data) / 1e6, name)
 
 
 class H(BaseHTTPRequestHandler):

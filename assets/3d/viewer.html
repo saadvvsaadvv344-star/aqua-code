@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aqua 3D viewer</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0b0c10;color:#e8eaee;font:13px "Segoe UI",system-ui,sans-serif}
+#bg{position:fixed;inset:0;background:radial-gradient(120% 90% at 50% 0%,#2a2f3a,#0b0c10 70%)}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ui{position:fixed;left:12px;top:12px;right:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;z-index:5}
+#ui>*{background:rgba(30,33,40,.78);border:1px solid rgba(255,255,255,.16);color:inherit;border-radius:999px;padding:7px 14px;font:inherit;backdrop-filter:blur(10px)}
+button{cursor:pointer}button.on{background:#e8eaee;color:#14161a}
+#stat{margin-left:auto;color:#9ea3ad}
+#msg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#9ea3ad;text-align:center;max-width:420px;line-height:1.5}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/addons/"}}</script>
+</head><body>
+<div id="bg"></div><div id="msg">Loading...</div>
+<div id="ui"><select id="sel" title="Models in the models folder"></select><button id="wire">Wireframe</button><button id="rot" class="on">Auto-rotate</button><button id="grid" class="on">Grid</button><button id="shot">Save picture</button><span id="stat"></span></div>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OBJLoader} from 'three/addons/loaders/OBJLoader.js';
+import {STLLoader} from 'three/addons/loaders/STLLoader.js';
+
+const $=s=>document.querySelector(s);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();const camera=new THREE.PerspectiveCamera(45,1,.01,5000);camera.position.set(3,2.2,4);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.autoRotate=true;controls.autoRotateSpeed=1.2;
+scene.add(new THREE.HemisphereLight(0xdfe8ff,0x20242c,1.1));
+const key=new THREE.DirectionalLight(0xffffff,2.4);key.position.set(5,9,6);key.castShadow=true;key.shadow.mapSize.set(2048,2048);scene.add(key);
+const fill=new THREE.DirectionalLight(0x9fb4ff,.6);fill.position.set(-6,3,-4);scene.add(fill);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(400,400),new THREE.ShadowMaterial({opacity:.28}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+let grid=new THREE.GridHelper(40,40,0x56606e,0x2c323c);scene.add(grid);
+let current=null,mixer=null;const clock=new THREE.Clock();
+
+function fit(obj){
+  const box=new THREE.Box3().setFromObject(obj);const size=box.getSize(new THREE.Vector3()),c=box.getCenter(new THREE.Vector3());
+  obj.position.sub(new THREE.Vector3(c.x,box.min.y,c.z));const r=Math.max(size.x,size.y,size.z)||1;
+  ground.position.y=-r*0.004;scene.remove(grid);grid=new THREE.GridHelper(Math.max(10,Math.ceil(r*4)),Math.max(10,Math.ceil(r*4)),0x56606e,0x2c323c);grid.position.y=-r*0.008;grid.visible=$('#grid').classList.contains('on');scene.add(grid);
+  key.position.set(r*1.6,r*2.6,r*1.8);key.shadow.camera.left=key.shadow.camera.bottom=-r*2;key.shadow.camera.right=key.shadow.camera.top=r*2;key.shadow.camera.far=r*10;key.shadow.camera.updateProjectionMatrix();
+  controls.target.set(0,size.y/2,0);camera.position.set(r*1.5,size.y*.7+r*.5,r*1.9);camera.near=r/100;camera.far=r*100;camera.updateProjectionMatrix();controls.update();
+}
+function prepare(obj){let tris=0;obj.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;const g=o.geometry;tris+=g.index?g.index.count/3:g.attributes.position.count/3;
+  [].concat(o.material).forEach(m=>{m.side=THREE.DoubleSide})}});return tris}
+async function load(url){
+  $('#msg').textContent='Loading...';$('#msg').style.display='block';
+  if(current){scene.remove(current);current=null}mixer=null;
+  const ext=url.split('?')[0].split('.').pop().toLowerCase();
+  try{
+    let obj;
+    if(ext==='glb'||ext==='gltf'){const g=await new GLTFLoader().loadAsync(url);obj=g.scene;if(g.animations&&g.animations.length){mixer=new THREE.AnimationMixer(obj);mixer.clipAction(g.animations[0]).play()}}
+    else if(ext==='obj'){obj=await new OBJLoader().loadAsync(url);obj.traverse(o=>{if(o.isMesh&&!o.material.map)o.material=new THREE.MeshStandardMaterial({color:0xb8c0cc,roughness:.6})})}
+    else if(ext==='stl'){const geo=await new STLLoader().loadAsync(url);geo.computeVertexNormals();obj=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0xb8c0cc,roughness:.55,metalness:.1}))}
+    else throw new Error('Unsupported file type .'+ext);
+    const tris=prepare(obj);scene.add(obj);current=obj;fit(obj);$('#msg').style.display='none';$('#stat').textContent=Math.round(tris).toLocaleString()+' triangles';
+    window.__loaded={url,triangles:Math.round(tris)};
+  }catch(e){$('#msg').innerHTML='Could not load <b>'+url+'</b><br>'+e.message;window.__loaded={error:String(e)}}
+}
+const params=new URLSearchParams(location.search);
+(async()=>{
+  let list=[];try{list=await (await fetch('../models/models.json',{cache:'no-store'})).json()}catch(e){}
+  const sel=$('#sel');list.forEach(m=>{const o=document.createElement('option');o.value='../models/'+m.file;o.textContent=m.file;sel.appendChild(o)});
+  let first=params.get('m');
+  if(first&&![...sel.options].some(o=>o.value===first)){const o=document.createElement('option');o.value=first;o.textContent=first.split('/').pop();sel.appendChild(o)}
+  if(!first&&sel.options.length)first=sel.options[sel.options.length-1].value;
+  if(first){sel.value=first;load(first)}else{$('#msg').innerHTML='No model yet.<br>Save one into the <b>models</b> folder, for example with aqua3d.'}
+  sel.onchange=()=>load(sel.value);
+})();
+$('#wire').onclick=e=>{e.target.classList.toggle('on');const w=e.target.classList.contains('on');current&&current.traverse(o=>{if(o.isMesh)[].concat(o.material).forEach(m=>m.wireframe=w)})};
+$('#rot').onclick=e=>{e.target.classList.toggle('on');controls.autoRotate=e.target.classList.contains('on')};
+$('#grid').onclick=e=>{e.target.classList.toggle('on');grid.visible=e.target.classList.contains('on')};
+$('#shot').onclick=()=>{renderer.render(scene,camera);const a=document.createElement('a');a.download='model.png';a.href=renderer.domElement.toDataURL('image/png');a.click()};
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
+renderer.setAnimationLoop(()=>{const dt=clock.getDelta();if(mixer)mixer.update(dt);controls.update();renderer.render(scene,camera)});
+</script></body></html>
