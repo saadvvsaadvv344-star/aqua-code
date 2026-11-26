@@ -944,6 +944,9 @@ def system_prompt(ws, extra=""):
             "failing, call request_stronger_model with a reason instead of guessing. Other AIs may work on this project after you "
             "(the user switches models and providers), so when the work is complete call add_note once with 1-3 short lines "
             "(what you did, what is left, anything the next AI must know), then answer with a brief summary and no tool call. "
+            "BUILD METHOD (this is how good engineers work, so follow it even if you are a small model): first state your plan in 3-5 lines. Then build in LAYERS: (1) a minimal version that really runs, written in a single write_file of at most ~250 lines; verify it (run it or look_page). "
+            "(2) add features one or two at a time with edit_file, verifying after each. (3) polish. NEVER write one giant file in one go, never leave TODOs, placeholders or fake functions, and never claim something works without having run or looked at it. "
+            "If the user message is short or vague (for example \"fix it\", \"it does not work\", \"add fur\"), work out what they mean from the files and the project notes instead of guessing or starting over, and keep everything that already works. "
             "SEPARATION: this folder is one project. If its existing files clearly belong to a DIFFERENT project than what the user now asks for (for example a PC-builder app when they ask for a cat game), "
             "do NOT read, reuse or overwrite them: tell the user to click the + next to Project in the sidebar to start a new empty project, then stop. Never try to open folders outside the workspace; they belong to other projects. "
             "SEEING: for anything with a screen (web pages, games, UIs) you can really look at it: after you build it, and before and after you fix a visual or runtime bug, "
@@ -1220,8 +1223,26 @@ def pool_models(pid, tiers):
     return ids[:8]
 
 
+COMPLEX_RE = re.compile(r"shader|glsl|webgl|three\.?js|3d|physics|raymarch|simulation|multiplayer|procedural|pathfind|particle|voxel|fluid|ray.?trac|game engine|ai opponent|machine learning|neural", re.I)
+COMPLAINT_RE = re.compile(r"doesn.?t work|does not work|not working|still|again|broken|black|blank|nothing|empty|error|bug|crash|fix|wrong|can.?t see|cannot see|no \w+ (?:shows|appears)|i see no|why", re.I)
+
+
+def followup_hint(text, first):
+    """Small models follow the LAST instruction best, so add the right method to short or vague messages automatically."""
+    t = text.strip()
+    if first or len(t) > 400:
+        return ""
+    if COMPLAINT_RE.search(t):
+        return ("\n\n[aqua auto-prompt: the user reports a problem. Do NOT guess and do NOT start over. 1) call look_page and read the console errors and the screenshot; the first error is usually the cause. "
+                "2) find that exact cause in the files (search/read_file). 3) fix only that, keep everything else. 4) call look_page again to prove it is fixed, then say what the cause was in one sentence.]")
+    if len(t.split()) <= 14:
+        return ("\n\n[aqua auto-prompt: a short change request. Read the existing files first, make the change inside them with edit_file (keep everything that already works), "
+                "then verify with look_page or by running it. Do not rewrite the whole project.]")
+    return ""
+
+
 BRIEF_SYSTEM = ("You turn a messy, typo-filled request from a non-expert into a clear build brief for a coding AI. Read it charitably, guess what the person REALLY wants, and fix typos. "
-               "Never ask questions. Write at most 170 words, plain text, in this shape:\nGOAL: one sentence.\nLOOK AND FEEL: 2 sentences about what the user sees and does.\nFEATURES: 5 to 8 short bullet points (concrete, buildable).\nTECH: the simplest tech that works offline in the browser (usually ONE index.html with plain JavaScript/WebGL).\nDONE WHEN: 3 checks that prove it works.\n"
+               "Never ask questions. Write at most 170 words, plain text, in this shape:\nGOAL: one sentence.\nLOOK AND FEEL: 2 sentences about what the user sees and does.\nFEATURES: 5 to 8 short bullet points (concrete, buildable).\nTECH: the simplest tech that works offline in the browser (usually ONE index.html with plain JavaScript/WebGL).\nDONE WHEN: 3 checks that prove it works.\nBUILD ORDER: 3 numbered stages (a minimal working core first, then features, then polish).\n"
                "Technique hints: a realistic slime / jelly / liquid object = a fragment shader that ray-marches a signed-distance rounded shape with spring-wobble physics, Fresnel + refraction + subsurface glow + specular highlights, mouse poke/drag adds impulses; "
                "a 3D scene = Three.js or raw WebGL; a game = a requestAnimationFrame loop, keyboard/mouse controls, score and restart; keep it small and polished rather than huge.")
 
@@ -1281,7 +1302,9 @@ def agent_loop(run, user_text, forced_tier):
     if cfg.get("understand_first", True) and first_msg and len(user_text.strip()) >= 12 and not run.stop:
         run.emit("status", persist=False, text="Understanding your request first (%s)" % plabel)
         brief, bmodel = make_brief(run, cfg, pid, tiers, top, user_text)
-    messages.append({"role": "user", "content": user_text + (("\n\n[aqua brief: a clean reading of the request above, written by a stronger model. Build exactly this, and ignore typos in the original]\n" + brief) if brief else "")})
+    messages.append({"role": "user", "content": user_text + (("\n\n[aqua brief: a clean reading of the request above, written by a stronger model. Build exactly this, and ignore typos in the original]\n" + brief) if brief else "") + followup_hint(user_text, first_msg)})
+    if forced_tier is None and first_msg and not sess.get("tier") and ti < 1 and top >= 1 and COMPLEX_RE.search(user_text + " " + (brief or "")):
+        ti = 1                                            # shaders, 3D, physics and games are too hard for the smallest model: start one tier up
     run.emit("user", text=user_text)
     if brief:
         run.emit("brief", text=brief, model=bmodel)

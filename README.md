@@ -106,6 +106,8 @@ Aqua keeps a shared notebook for each project at `.aqua/NOTES.md` inside your wo
 
 For a new task, one call of your strongest model first turns your request (typos, missing words and all) into a short clear brief (goal, look and feel, features, tech, done-when). You see it as a card, called What I understood, and the cheaper model builds exactly that instead of guessing. Turn it off in Settings (Understand first).
 
+**Auto-prompting for every AI.** Short or vague follow-ups are expanded automatically: a complaint ("it does not work", "I see nothing") gets the debugging method added (look at the page, read the console error, fix that exact cause, prove it), and a short change request gets "edit the existing files, keep what works, then verify". Every AI also gets a build method in its instructions: plan, build in layers (a small working core first, then features, then polish), verify after each step, no placeholders. Hard tasks (shaders, 3D, physics, games) start one model tier higher instead of on the smallest model.
+
 ## It switches models by itself
 
 When a model hits its limit, Aqua does not wait: it moves to your next model, then to your other connected AIs, and then to the provider's other models with the same key (for example every Gemini flash model the key can use; each has its own free limit). It only waits when nothing is left, and it shows a countdown. The per-model fallbacks can be turned off in Settings.
