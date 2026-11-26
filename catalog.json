@@ -118,24 +118,25 @@
       "tiers": [
         {
           "name": "Lite",
-          "model": "aion-labs/aion-3.0-mini"
+          "model": "aion-labs/aion-3.5-mini"
         },
         {
           "name": "Pro",
-          "model": "aion-labs/aion-3.0"
+          "model": "aion-labs/aion-3.5"
         }
       ],
       "info": {
-        "tag": "Free, tiny",
+        "tag": "Free daily (card check)",
         "c": "var(--amber)",
-        "sub": "About 20K tokens a day.",
+        "sub": "20K tokens a day. A card must be verified first (never charged).",
         "url": "https://aionlabs.ai",
         "steps": [
-          "Create an Aion Labs account.",
-          "Create an API key in the dashboard.",
-          "Paste it below."
+          "Create an Aion Labs account and open the API keys page.",
+          "Create a key.",
+          "On the Billing page of the Aion dashboard, verify a payment card. Aion says it is never charged; until then every API call is blocked with 403 permission_error.",
+          "Paste the key in Paste keys."
         ],
-        "note": "Listed as 15 requests a minute and 20K tokens a day, so it runs out quickly."
+        "note": "From Aion's own docs (November 2026): free-tier keys are activated by verifying a payment card, one card per free account. Free limits: 15 requests a minute, 20,000 tokens a day."
       }
     },
     "axforge": {

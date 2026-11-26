@@ -1951,7 +1951,7 @@ def auto_pick_ids(rows):
 # Which service a pasted key belongs to. Keys that have no recognisable prefix can be written as  name: key
 KEY_PREFIXES = [("sk-or-", "openrouter"), ("AIza", "gemini"), ("gsk_", "groq"), ("csk-", "cerebras"), ("nvapi-", "nvidia"),
                 ("hf_", "huggingface"), ("github_pat_", "github"), ("ghp_", "github"), ("fw_", "fireworks"),
-                ("cfut_", "cloudflare"), ("cfat_", "cloudflare"), ("AQ.", "gemini"), ("rc_", "runcrate"), ("gnk-", "gonka")]
+                ("cfut_", "cloudflare"), ("cfat_", "cloudflare"), ("AQ.", "gemini"), ("rc_", "runcrate"), ("gnk-", "gonka"), ("alv2", "aion")]
 # keys whose shape (not start) tells the service
 KEY_SHAPES = [(re.compile(r"^[0-9a-f]{32}\.[A-Za-z0-9]{8,24}$"), "zai")]
 HUB_PRESETS = {"together": ("Together AI", "https://api.together.xyz/v1"), "fireworks": ("Fireworks AI", "https://api.fireworks.ai/inference/v1"),
@@ -1989,6 +1989,7 @@ def resolve_service(name, key, cfg):
 
 ALT_BASES = {"zai": ["https://api.z.ai/api/paas/v4"], "siliconflow": ["https://api.siliconflow.com/v1"]}
 KEY_HINTS = {
+    "aion": "Aion Labs keys stay blocked (403 permission_error) until you verify a payment card on the Billing page of the Aion dashboard. The card is checked through Stripe and, as Aion says, never charged. Without that step the key cannot work.",
     "runcrate": "Runcrate's free allowance works only if you signed up with GitHub (an account at least 30 days old). A Google sign-up needs a card, so the key is refused for lack of credit.",
     "cloudflare": "Cloudflare needs two things: a token with the Workers AI permission and your Account ID. Write the line as  cloudflare: ACCOUNTID:TOKEN  (the Account ID is on the Cloudflare dashboard home page).",
     "github": "Create a personal access token and allow the Models permission.",
@@ -2041,6 +2042,8 @@ def parse_key_lines(text):
     return out[:30]
 
 
+# a 403 that is about the ACCOUNT, not the key (Aion: 'permission_error' until a card is verified)
+BLOCKED_RX = re.compile(r"permission[_ ]error|not (yet )?activated|activate|verify|verification|payment card|billing|subscription|plan|upgrade|not allowed to use|access (denied|restricted)", re.I)
 # some services (Gemini) answer a wrong key with HTTP 400 and words, not 401
 KEY_BAD_RX = re.compile(r"api key not valid|valid api key|invalid[ _-]?api[ _-]?key|incorrect api key|invalid.{0,12}(key|token)|unauthori[sz]ed|authentication (error|failed)|invalid credentials|key.{0,20}(expired|revoked|disabled)", re.I)
 GUESS_MODELS = ["gpt-oss-20b", "gpt-oss-120b", "llama-3.3-70b-instruct", "llama-3.1-8b-instruct", "llama3.1-8b", "mistral-small-latest",
@@ -2054,8 +2057,10 @@ def _probe(base, model, key):
         return "yes"
     except LLMError as e:
         m = e.msg or ""
-        if e.status in (401, 403) or KEY_BAD_RX.search(m):
+        if e.status == 401 or KEY_BAD_RX.search(m):
             return "no"
+        if e.status == 403:
+            return "yes" if BLOCKED_RX.search(m) else "no"  # 403 with 'permission / activate / card' words: it knows the key, the account is blocked
         if e.status in (402, 429):
             return "yes"                                    # it knew the key: only credit or a limit stands in the way
         if e.status in (400, 404, 410, 422):
@@ -2295,6 +2300,9 @@ def connect_key(kind, ident, key):
         if t.get("ok"):
             return {"service": label, "id": pid, "ok": True, "detail": "%d model%s in the ladder, first one answered in %d ms" % (n, "" if n == 1 else "s", t.get("ms", 0))}
         err = str(t.get("error", "unknown error"))
+        if re.search(r"HTTP 403", err) and BLOCKED_RX.search(err) and not KEY_BAD_RX.search(err):      # the key is known, the account is blocked
+            restore()
+            return {"service": label, "ok": False, "detail": "The key looks valid, but %s blocks it: %s Nothing was saved. %s" % (label, re.sub(r"\s*\(HTTP 403\)\s*$", "", err)[:230], hint)}
         if re.search(r"HTTP 40[13]", err) or KEY_BAD_RX.search(err) or err.strip() in ("Unauthorized", "Forbidden"):
             return rejected(err)
         if re.search(r"Expecting value|Extra data|Request failed: ", err):      # the address answered, but not like an AI service
