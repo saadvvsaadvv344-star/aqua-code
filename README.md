@@ -31,6 +31,18 @@ It opens as its own desktop window (Edge, Chrome, Brave or Chromium in app mode:
 - If double-clicking `Start Aqua Code.command` is blocked, run `chmod +x "Start Aqua Code.command"` once, or just run `python3 aqua_app.py` in Terminal.
 - I developed and tested this on Windows 11. The macOS and Linux paths are written to the same standard-library code and checked for Python 3.9 compatibility, but I could not run them on a real Mac. Please open an issue if something misbehaves.
 
+### Working level (how hard Aqua works on your PC)
+
+The right panel (and Settings) has **Working level: Low, Balanced or High**.
+
+| Level | What it does |
+| --- | --- |
+| **Low** | Gentle. Plain look (glass off), no animations, no intro, and the Aqua server runs at low priority on a quarter of your CPU cores (4 of 16, never fewer than 2). Anything it starts (commands, dev servers) inherits that. |
+| **Balanced** (default) | Soft glass, normal priority, all cores. |
+| **High** | Full liquid glass and full speed. |
+
+On Windows you can switch levels at any time. On macOS and Linux a lowered priority cannot be raised again without administrator rights, so going back up from Low needs an app restart there. Heavy jobs such as rendering the explainer video run with their own limits (see `video/README.md`).
+
 ### Plain mode (remove the liquid glass)
 
 Settings, **Glass quality**: **Full** (real refraction), **Lite** (soft glass, default) or **Off** (flat panels, no blur, no animation, no effects: fastest). **Water intro animation** can be switched off separately.

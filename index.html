@@ -644,6 +644,14 @@ function addModelTag(ev){
 function addFailover(ev){
   add(el(`<div class="arrow"><span class="chip" style="color:var(--amber)"><i></i>${esc(ev.frm)}</span>${ic('arrow')}<span class="chip" style="color:var(--green)"><i></i>${esc(ev.to)}</span></div><div><b>Switching to another AI</b><small>${esc(ev.reason)} - now using ${esc(ev.to)} (${esc(ev.model)})</small></div>`,'esc'));
 }
+async function setLevel(l){
+  if(S.runId){toast('Wait for the running task to finish');return}
+  const r=await api('/api/config',{level:l});if(!r.config){toast(r.error||'Could not change the level');return}
+  const wasOff=FX.mode==='off';S.cfg=r.config;FX.mode=LV_FX[l];
+  try{localStorage.setItem('ac-fx',FX.mode);localStorage.setItem('ac-intro',l==='low'?'off':'on')}catch(e){}
+  if(wasOff!==(FX.mode==='off')){location.reload();return}
+  FX.apply();render();toast('Working level: '+l);
+}
 function addNotice(t){add(el(`${ic('alert')}<div>${esc(t)}</div>`,'esc'))}
 function addError(t){
   const gl=/free tier is not available|not eligible for the Gemini/i.test(t);
@@ -756,6 +764,8 @@ function renderRight(){
   let h='';
   if(S.budget!=='ok'||frac>=1)h+=`<div class="card" style="padding:0;border:0;background:none;box-shadow:none"><div class="warn bad">${ic('alert','width:15px;height:15px;vertical-align:-3px')} Budget reached. The agent will not call the API until you raise it in Settings.</div></div>`;
   else if(frac>=.8)h+=`<div class="card" style="padding:0;border:0;background:none;box-shadow:none"><div class="warn">${ic('alert','width:15px;height:15px;vertical-align:-3px')} ${Math.round(frac*100)}% of today's budget is used.</div></div>`;
+  {const lv=c.level||'balanced',cores=S.cores||1,cap=S.coreCap||cores;
+   h+=`<div class="card"><h3>Working level <span style="text-transform:none;letter-spacing:0;font-weight:500">${lv==='low'?cap+' of '+cores+' cores, low priority':'all '+cores+' cores'}</span></h3><div class="seg" id="lvSeg" style="width:100%">${['low','balanced','high'].map(k=>`<button data-l="${k}" class="${k===lv?'on':''}" style="flex:1;justify-content:center">${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}</div><div class="step-note" style="margin-top:10px">${{low:'Gentle: plain look, no animations, runs at low priority on a quarter of your cores.',balanced:'Soft glass, normal priority. Good for most PCs.',high:'Full liquid glass and full speed.'}[lv]}</div></div>`;}
   h+=`<div class="card"><h3>Connection</h3><div style="display:flex;align-items:center;gap:12px"><span class="kd ${prov().has_key?'ok':''}"></span><div style="flex:1;min-width:0"><b>${esc(prov().label)}</b><div class="mut" style="font-size:12px;font-family:Consolas,monospace">${prov().has_key?'Key saved '+esc(prov().key):'No key saved yet'}</div></div><button class="btn ghost" id="keyBtn">${prov().has_key?'Manage':'Add key'}</button></div></div>`;
   {const conn=Object.entries(c.providers).filter(([k,v])=>v.has_key&&k!==pid&&(v.free||c.failover_paid)).map(([k,v])=>v.label);
    h+=`<div class="card"><h3>If this AI runs out</h3><div class="step-note">${c.failover===false?'Automatic switching is <b style="color:var(--amber)">off</b> (turn it on in Settings).':conn.length?`Aqua switches by itself to: <b>${conn.map(esc).join(', ')}</b>, in that order.`:'No backup AI is connected yet. Add free keys (Groq, Cerebras, Mistral, OpenRouter...) so work never stops.'}</div><button class="btn ghost" id="bkBtn" style="margin-top:10px">${ic('plus')}Connect another AI</button></div>`;}
@@ -777,13 +787,13 @@ function renderRight(){
       <div class="row"><span>${x.rpm>0?`${rn} / ${x.rpm} per minute`:'rate limit: dynamic'}</span><span>${fn(m.in)} in - ${fn(m.out)} out</span></div></div></div>`}).join('')+`</div>`;
   h+=`<div class="card"><h3>How credit is saved</h3><div class="step-note">1. Every task starts on <b>${esc(t[Math.min(c.start_tier,t.length-1)].name)}</b>, the cheapest model.<br>2. After <b>${c.esc_errors}</b> failing steps in a row, <b>${c.esc_steps}</b> steps without finishing, a rate limit, or when the model asks, it hands over to the next tier with the full context.<br>3. It never goes above <b>${esc(t[Math.min(c.max_tier,t.length-1)].name)}</b> and never past your budget.<br>4. A syntax check after every file write catches weak output early.${c.auto_escalate?'':'<br><b style="color:var(--amber)">Auto-escalation is off.</b>'}</div></div>`;
   h+=`<div class="card"><h3>Account balance</h3>`+(S.balance?`<div class="step-note">${S.balance}</div>`:'')+`<button class="btn ghost" id="balBtn" style="margin-top:${S.balance?10:0}px">${ic('coin')}Check ${esc(prov().label)} balance</button></div>`;
-  $('#rbody').innerHTML=h;const kb=$('#keyBtn');if(kb)kb.onclick=()=>{prov().has_key?openSettings():openWelcome()};const bk=$('#bkBtn');if(bk)bk.onclick=()=>openWelcome();
+  $('#rbody').innerHTML=h;{const ls=$('#lvSeg');if(ls){ls.querySelectorAll('button').forEach(b=>b.onclick=()=>setLevel(b.dataset.l));thumb(ls,'lv')}}const kb=$('#keyBtn');if(kb)kb.onclick=()=>{prov().has_key?openSettings():openWelcome()};const bk=$('#bkBtn');if(bk)bk.onclick=()=>openWelcome();
   $('#balBtn').onclick=async()=>{const r=await api('/api/balance',{provider:pid});
     if(r.ok){const b=(r.data.balance_infos||[]).map(x=>`<b>${esc(x.currency)} ${esc(x.total_balance)}</b> (granted ${esc(x.granted_balance)}, topped up ${esc(x.topped_up_balance)})`).join('<br>');S.balance=b||'No balance information returned.';if(r.data.is_available===false)S.balance+='<br><span style="color:var(--red)">Account has insufficient balance.</span>'}
     else S.balance=esc(r.error||'Failed');renderRight()};
 }
 function render(){renderHead();renderSide();renderChips();renderRight();$('#wspath').textContent=S.cfg.workspace}
-async function loadState(){const d=await api('/api/state');if(d.error)return;S.cfg=d.config;S.usage=d.usage;S.sessions=d.sessions;S.budget=d.budget;S.previewPort=d.preview_port;render()}
+async function loadState(){const d=await api('/api/state');if(d.error)return;S.cfg=d.config;S.usage=d.usage;S.sessions=d.sessions;S.budget=d.budget;S.previewPort=d.preview_port;S.cores=d.cores;S.coreCap=d.core_cap;render()}
 
 /* ---------- file tree ---------- */
 let tt=null;function refreshTreeSoon(){clearTimeout(tt);tt=setTimeout(loadTree,500)}
@@ -808,7 +818,7 @@ function collect(){
   const p=draft.providers[dtab];
   if(g('f_base')){p.base=g('f_base').value;p.free=g('f_free').checked}
   if(g('tiers')){p.tiers=[...m.querySelectorAll('.trow')].map(r=>{const v=n=>r.querySelector('[data-k="'+n+'"]').value;return{name:v('name'),model:v('model'),in:+v('in')||0,cache:+v('cache')||0,out:+v('out')||0,rpm:+v('rpm')||0,rpd:+v('rpd')||0}})}
-  if(g('f_ws')){draft.workspace=g('f_ws').value;draft.approval=g('f_appr').value;draft.daily_budget=+g('f_day').value||0;draft.total_budget=+g('f_tot').value||0;
+  if(g('f_ws')){draft.workspace=g('f_ws').value;draft.approval=g('f_appr').value;draft.level=g('f_lvl').value;draft.daily_budget=+g('f_day').value||0;draft.total_budget=+g('f_tot').value||0;
     draft.auto_escalate=g('f_auto').checked;draft.sticky_tier=g('f_sticky').checked;draft.failover=g('f_fo').checked;draft.failover_paid=g('f_fop').checked;draft.no_key_fallback=g('f_nk').checked;draft.start_tier=+g('f_start').value||0;draft.max_tier=+g('f_max').value;draft.esc_errors=+g('f_errs').value||2;draft.esc_steps=+g('f_steps').value||8;draft.max_steps=+g('f_ms').value||40}
 }
 /* keys are only ever sent by the key manager (never as a side effect of saving other settings) */
@@ -851,6 +861,7 @@ function drawSettings(){
   <div class="sec"><h3>${ic('folder')}Agent</h3><div class="g2"><label class="fld">Workspace folder (the agent can only touch this)<input id="f_ws" value="${esc(draft.workspace)}"></label>
    <label class="fld">Glass quality (this browser)<select id="f_fx"><option value="full" ${FX.mode==='full'?'selected':''}>Full: refraction and animated background (heavy)</option><option value="lite" ${FX.mode==='lite'?'selected':''}>Lite: soft glass, smooth and fast (recommended)</option><option value="off" ${FX.mode==='off'?'selected':''}>Off: plain flat look, no liquid glass (fastest)</option></select></label>
    <label class="fld">Water intro animation (this browser)<select id="f_intro"><option value="on" ${(()=>{try{return localStorage.getItem('ac-intro')!=='off'?'selected':''}catch(e){return'selected'}})()}>On</option><option value="off" ${(()=>{try{return localStorage.getItem('ac-intro')==='off'?'selected':''}catch(e){return''}})()}>Off</option></select></label>
+   <label class="fld">Working level<select id="f_lvl"><option value="low" ${draft.level==='low'?'selected':''}>Low: gentle, plain look, lowest priority</option><option value="balanced" ${(draft.level||'balanced')==='balanced'?'selected':''}>Balanced (default)</option><option value="high" ${draft.level==='high'?'selected':''}>High: full speed, full glass</option></select></label>
    <label class="fld">Approval mode<select id="f_appr"><option value="ask" ${draft.approval==='ask'?'selected':''}>Ask for every change</option><option value="edits" ${draft.approval==='edits'?'selected':''}>Auto edits, ask for commands</option><option value="auto" ${draft.approval==='auto'?'selected':''}>Full auto</option></select></label></div></div>
   </div><div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn gold" id="saveCfg">${ic('check')}Save</button></div>`);
   const m=$('#modal');
@@ -895,7 +906,7 @@ function drawSettings(){
     const saved=await api('/api/config',noKeys({providers:{[dtab]:draft.providers[dtab]}}));if(saved.config)S.cfg=saved.config;
     const r=await api('/api/test',{provider:dtab,tier:+b.dataset.test});
     tr.style.color=r.ok?'var(--green)':'var(--red)';tr.textContent=r.ok?`Connected to ${r.model} in ${r.ms} ms${r.reply?' - it replied "'+r.reply+'"':''}`:(r.error||'Failed');renderHead();b.classList.remove('busy')});
-  $('#saveCfg').onclick=async()=>{collect();const fx=$('#f_fx'),itv=$('#f_intro');let reload=false;if(fx){const old=FX.mode;FX.mode=fx.value;try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}if((old==='off')!==(FX.mode==='off'))reload=true;FX.apply()}if(itv){try{localStorage.setItem('ac-intro',itv.value)}catch(e){}}const r=await api('/api/config',noKeys(draft));if(r.error){toast(r.error);return}S.cfg=r.config;S.usage=r.usage;closeModal();toast('Settings saved');if(reload){setTimeout(()=>location.reload(),350);return}render();loadTree();if(!S.sid)showHero()};
+  $('#saveCfg').onclick=async()=>{collect();const fx=$('#f_fx'),itv=$('#f_intro');let reload=false;if(fx&&draft.level!==S.cfg.level&&fx.value===FX.mode){fx.value=LV_FX[draft.level]||fx.value;if(itv)itv.value=draft.level==='low'?'off':'on'}if(fx){const old=FX.mode;FX.mode=fx.value;try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}if((old==='off')!==(FX.mode==='off'))reload=true;FX.apply()}if(itv){try{localStorage.setItem('ac-intro',itv.value)}catch(e){}}const r=await api('/api/config',noKeys(draft));if(r.error){toast(r.error);return}S.cfg=r.config;S.usage=r.usage;closeModal();toast('Settings saved');if(reload){setTimeout(()=>location.reload(),350);return}render();loadTree();if(!S.sid)showHero()};
 }
 
 /* ---------- first run: ask for the API key ---------- */
@@ -1121,6 +1132,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 
 /* ================= liquid glass engine ================= */
 const NS='http://www.w3.org/2000/svg';
+const LV_FX={low:'off',balanced:'lite',high:'full'};
 const FX={mode:(()=>{try{return localStorage.getItem('ac-fx')||'lite'}catch(e){return'lite'}})(),items:new Map(),n:0,ro:null};
 FX.ok=!!(window.CSS&&CSS.supports&&CSS.supports('backdrop-filter','url(#a)'))&&/Chrome|Chromium|Edg/.test(navigator.userAgent);
 FX.svg=document.createElementNS(NS,'svg');FX.svg.setAttribute('width','0');FX.svg.setAttribute('height','0');FX.svg.style.cssText='position:absolute;pointer-events:none';document.body.appendChild(FX.svg);

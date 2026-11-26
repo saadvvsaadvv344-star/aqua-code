@@ -42,6 +42,7 @@ DEFAULT_CONFIG = {
     "esc_steps": 8,               # steps on one tier without finishing before escalating
     "sticky_tier": False,         # keep the stronger tier for the next message
     "failover": True,             # when an AI runs out of credit or hits its limit, switch to the next connected AI
+    "level": "balanced",          # working level: low (gentle), balanced, high (full speed)
     "no_key_fallback": True,      # when no API key is saved, use the free anonymous models that still work without one
     "failover_paid": False,       # ...but only to FREE providers unless this is on (so it never spends money by surprise)
     "max_steps": 40,
@@ -208,6 +209,8 @@ def _apply_config_update(new):
     for k in ("provider", "workspace", "approval"):
         if isinstance(new.get(k), str) and new[k].strip():
             cfg[k] = new[k].strip()
+    if new.get("level") in ("low", "balanced", "high"):
+        cfg["level"] = new["level"]
     for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback"):
         if k in new:
             cfg[k] = bool(new[k])
@@ -246,7 +249,44 @@ def _apply_config_update(new):
     cfg["start_tier"] = max(0, cfg["start_tier"])
     cfg["max_tier"] = max(0, cfg["max_tier"])
     save_cfg(cfg)
+    apply_level(cfg["level"])
     return cfg
+
+
+# --------------------------------------------------------------------------- working level (how hard Aqua works on this PC)
+_nice_done = [0]
+
+
+def _level_cores(level):
+    n = os.cpu_count() or 1
+    return max(1, min(n, max(2, n // 4))) if level == "low" else n
+
+
+def apply_level(level):
+    """low = gentle: lowest sensible priority and a quarter of the cores. balanced / high = normal priority, all cores.
+    Child processes (commands, dev servers) inherit this. On macOS/Linux a lower priority cannot be raised again without
+    administrator rights, so going back up from low needs an app restart there."""
+    n = os.cpu_count() or 1
+    cap = _level_cores(level)
+    try:
+        if os.name == "nt":
+            import ctypes
+            k = ctypes.windll.kernel32
+            k.GetCurrentProcess.restype = ctypes.c_void_p
+            k.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            k.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            h = k.GetCurrentProcess()
+            k.SetPriorityClass(h, 0x4000 if level == "low" else 0x20)          # BELOW_NORMAL / NORMAL
+            k.SetProcessAffinityMask(h, (1 << cap) - 1 if level == "low" else (1 << n) - 1)
+        else:
+            if level == "low" and _nice_done[0] < 10:
+                os.nice(10 - _nice_done[0])
+                _nice_done[0] = 10
+            if hasattr(os, "sched_setaffinity"):
+                os.sched_setaffinity(0, set(range(cap if level == "low" else n)))
+    except Exception:
+        pass
+    return cap
 
 
 # --------------------------------------------------------------------------- usage / limits
@@ -1420,7 +1460,7 @@ class H(BaseHTTPRequestHandler):
                 lst = sorted(({"id": s["id"], "title": s["title"], "created": s["created"], "cost": s.get("cost", 0.0)}
                               for s in sessions.values()), key=lambda s: -s["created"])
                 active = {r.sess["id"]: r.id for r in runs.values() if not r.done}
-                return self._send(200, {"config": masked_cfg(cfg), "usage": usage_snapshot(cfg), "sessions": lst, "preview_port": PREVIEW_PORT, "platform": sys.platform, "machine": platform.machine(),
+                return self._send(200, {"config": masked_cfg(cfg), "usage": usage_snapshot(cfg), "sessions": lst, "preview_port": PREVIEW_PORT, "platform": sys.platform, "machine": platform.machine(), "level": cfg["level"], "cores": os.cpu_count() or 1, "core_cap": _level_cores(cfg["level"]),
                                         "active": active, "budget": budget_state(cfg)})
             if u.path == "/api/session":
                 s = sessions.get(q.get("id"))
@@ -1571,6 +1611,12 @@ class H(BaseHTTPRequestHandler):
             pass
         except Exception as e:
             self._send(500, {"error": str(e)})
+
+
+try:
+    apply_level(load_cfg().get("level", "balanced"))
+except Exception:
+    pass
 
 
 if __name__ == "__main__":
