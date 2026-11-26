@@ -250,6 +250,10 @@ def _apply_config_update(new):
             if "{account_id}" in cur.get("base", "") and mm:           # Cloudflare: ACCOUNTID:TOKEN fills the blank in the address
                 cur["base"] = cur["base"].replace("{account_id}", mm.group(1))
                 k2 = mm.group(2)
+            elif "{account_id}" in cur.get("base", "") and k2:          # a token alone: Cloudflare tells us the account
+                acct = cloudflare_account(k2)
+                if acct:
+                    cur["base"] = cur["base"].replace("{account_id}", acct)
             cur["key"] = k2
         if isinstance(pv.get("tiers"), list) and pv["tiers"]:
             tiers = []
@@ -1946,7 +1950,8 @@ def auto_pick_ids(rows):
 
 # Which service a pasted key belongs to. Keys that have no recognisable prefix can be written as  name: key
 KEY_PREFIXES = [("sk-or-", "openrouter"), ("AIza", "gemini"), ("gsk_", "groq"), ("csk-", "cerebras"), ("nvapi-", "nvidia"),
-                ("hf_", "huggingface"), ("github_pat_", "github"), ("ghp_", "github"), ("fw_", "fireworks")]
+                ("hf_", "huggingface"), ("github_pat_", "github"), ("ghp_", "github"), ("fw_", "fireworks"),
+                ("cfut_", "cloudflare"), ("cfat_", "cloudflare")]
 HUB_PRESETS = {"together": ("Together AI", "https://api.together.xyz/v1"), "fireworks": ("Fireworks AI", "https://api.fireworks.ai/inference/v1"),
                "deepinfra": ("DeepInfra", "https://api.deepinfra.com/v1/openai"), "sambanova": ("SambaNova", "https://api.sambanova.ai/v1"),
                "hyperbolic": ("Hyperbolic", "https://api.hyperbolic.xyz/v1")}
@@ -2061,6 +2066,16 @@ def identify_and_connect(key, hint):
     return {"service": tried[0] if tried else "?", "ok": False, "detail": detail[:400]}
 
 
+def cloudflare_account(token):
+    """A Cloudflare token alone is enough: ask Cloudflare which account it belongs to (the Account ID goes into the address)."""
+    try:
+        j = http_json("https://api.cloudflare.com/client/v4/accounts", token, method="GET", timeout=20)
+        res = j.get("result") or []
+        return str(res[0]["id"]) if res and res[0].get("id") else None
+    except Exception:
+        return None
+
+
 def _label_of(pid):
     return load_cfg()["providers"][pid]["label"]
 
@@ -2089,9 +2104,15 @@ def connect_key(kind, ident, key):
                 old_key, old_base = prov.get("key", ""), prov.get("base", "")
             if "{" in old_base:                              # an address with a blank, like Cloudflare's account ID
                 mm = re.match(r"^([0-9a-fA-F]{32})[:\s]+(\S+)$", key)
-                if "{account_id}" not in old_base or not mm:
+                if "{account_id}" not in old_base:
                     return {"service": prov["label"], "ok": False, "detail": "This service needs an extra value in its address. " + (hint or "Open Settings and fill in the address.")}
-                new_base, key = old_base.replace("{account_id}", mm.group(1)), mm.group(2)
+                if mm:
+                    new_base, key = old_base.replace("{account_id}", mm.group(1)), mm.group(2)
+                else:                                        # only a token was pasted: ask Cloudflare which account it belongs to
+                    acct = cloudflare_account(key)
+                    if not acct:
+                        return {"service": prov["label"], "ok": False, "detail": "Cloudflare did not tell which account this token belongs to (the token may lack the permission to read the account, or it is wrong). " + hint}
+                    new_base = old_base.replace("{account_id}", acct)
             else:
                 new_base = old_base
             with _lock:
