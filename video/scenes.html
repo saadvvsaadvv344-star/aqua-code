@@ -1,0 +1,521 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Aqua Code explainer</title>
+<style>
+:root{--tx:#f2f3f5;--mut:#9ea3ad;--dim:#6b7078;--silver:#e8eaee;--teal:#8fb8b2;--violet:#a79fc2;--green:#6ee7a8;--red:#ff6b6b;--amber:#ffb454}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#000;overflow:hidden}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#07080a;color:var(--tx);font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#bg,#scenes{position:absolute;inset:0}
+.blob{position:absolute;border-radius:50%;opacity:.55;will-change:transform}
+#water{position:absolute;inset:0;width:1920px;height:1080px;opacity:0}
+.scene{position:absolute;inset:0;opacity:0;transform-origin:50% 50%}
+.abs{position:absolute}
+.g{position:absolute;background:linear-gradient(145deg,rgba(255,255,255,.11),rgba(255,255,255,.025));border:1.5px solid rgba(255,255,255,.15);border-radius:38px;
+  box-shadow:inset 2px 2px 0 rgba(255,255,255,.34),inset -1px -1px 0 rgba(255,255,255,.08),inset 0 0 40px rgba(255,255,255,.03),0 44px 100px -24px rgba(0,0,0,.75);
+  backdrop-filter:blur(28px) saturate(170%)}
+.g::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(500px circle at 15% -5%,rgba(255,255,255,.22),transparent 60%)}
+.ic{display:inline-flex;align-items:center;justify-content:center}.ic svg{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.h1{position:absolute;font-weight:700;letter-spacing:-2px;line-height:1.02;font-size:104px}
+.h1 em{font-style:normal;color:var(--silver);background:linear-gradient(120deg,#fff,#aeb4be);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{position:absolute;font-size:44px;color:var(--mut);letter-spacing:-.3px}
+.chip{display:inline-flex;align-items:center;gap:12px;padding:8px 22px;border-radius:999px;font-weight:650;font-size:30px;border:2px solid currentColor;background:rgba(255,255,255,.06)}
+.chip i{width:14px;height:14px;border-radius:50%;background:currentColor;box-shadow:0 0 16px currentColor}
+.mono{font-family:Consolas,"Cascadia Mono",monospace}
+.pill{display:inline-flex;align-items:center;gap:14px;padding:16px 32px;border-radius:999px;font-size:38px;font-weight:600;background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.03));border:1.5px solid rgba(255,255,255,.17);box-shadow:inset 1.5px 1.5px 0 rgba(255,255,255,.35),0 18px 40px -12px rgba(0,0,0,.6)}
+.dot{width:16px;height:16px;border-radius:50%;background:var(--green);box-shadow:0 0 18px var(--green)}
+.card{position:absolute;border-radius:30px;background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.025));border:1.5px solid rgba(255,255,255,.15);box-shadow:inset 1.5px 1.5px 0 rgba(255,255,255,.3),0 26px 60px -20px rgba(0,0,0,.7)}
+.tool{display:flex;align-items:center;gap:22px;height:74px;padding:0 26px;border-radius:24px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);font-size:30px}
+.tool .ti{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:rgba(255,255,255,.1);font-size:28px;color:var(--silver)}
+.tool .tt{flex:1;font-family:Consolas,monospace;font-size:29px}
+.tool .st{font-size:26px;color:var(--mut);display:flex;align-items:center;gap:10px;min-width:260px;justify-content:flex-end}
+.spin{width:28px;height:28px;border-radius:50%;border:4px solid rgba(255,255,255,.18);border-top-color:#fff}
+.bub{padding:22px 32px;border-radius:30px;font-size:34px;max-width:900px;line-height:1.35}
+.ub{background:linear-gradient(150deg,rgba(207,211,218,.34),rgba(207,211,218,.12));border:1.5px solid rgba(207,211,218,.4);border-bottom-right-radius:10px}
+.ab{background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:1.5px solid rgba(255,255,255,.14);border-bottom-left-radius:10px}
+#cap{position:absolute;left:0;right:0;bottom:62px;display:flex;justify-content:center;pointer-events:none}
+.capl{position:absolute;bottom:0;max-width:1560px;text-align:center;font-size:46px;line-height:1.28;font-weight:600;letter-spacing:-.3px;padding:18px 40px;border-radius:30px;background:rgba(6,7,9,.55);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);opacity:0}
+.capl span{opacity:.42;transition:none}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 120% at 50% 50%,transparent 55%,rgba(0,0,0,.55))}
+.bar{position:absolute;height:16px;border-radius:99px;background:rgba(0,0,0,.4);overflow:hidden;box-shadow:inset 0 2px 6px rgba(0,0,0,.5)}.bar>i{display:block;height:100%;border-radius:inherit}
+#chat .tool{height:62px;font-size:28px}#chat .bub{padding:16px 28px;font-size:32px}#chat .tool .ti{width:40px;height:40px}
+</style></head>
+<body>
+<div id="stage">
+  <div id="bg"></div>
+  <canvas id="water" width="1280" height="720"></canvas>
+  <div id="scenes"></div>
+  <div id="cap"></div>
+<svg width="0" height="0" style="position:absolute"><filter id="goo2"><feGaussianBlur in="SourceGraphic" stdDeviation="12" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 24 -11"/></filter></svg>
+  <div id="vig"></div>
+</div>
+<script>
+/* fast mode (?fast=1): skips the costly background blur so rendering needs far less CPU */
+if(location.search.includes('fast=1')){const st=document.createElement('style');st.textContent='*{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.g{background:linear-gradient(145deg,rgba(40,44,52,.82),rgba(18,20,24,.88))!important}';document.head.appendChild(st)}
+/* ======================= tiny deterministic timeline engine ======================= */
+const $=(s,r=document)=>r.querySelector(s);
+function mk(tag,cls,html,parent){const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;if(parent)parent.appendChild(e);return e}
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const E={out:t=>1-Math.pow(1-t,3),inout:t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,lin:t=>t,spring:t=>t>=1?1:1-Math.exp(-6.5*t)*Math.cos(11*t),quint:t=>1-Math.pow(1-t,5)};
+const P=(t,a,d,ease=E.out)=>ease(clamp((t-a)/d));
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function put(el,o){el.style.opacity=o.o===undefined?1:o.o;el.style.transform=`translate(${(o.x||0).toFixed(2)}px,${(o.y||0).toFixed(2)}px) scale(${o.sx===undefined?(o.s===undefined?1:o.s):o.sx},${o.sy===undefined?(o.s===undefined?1:o.s):o.sy}) rotate(${o.r||0}deg)`;if(o.b!==undefined)el.style.filter=o.b>.05?`blur(${o.b.toFixed(1)}px)`:'none'}
+function appear(el,t,a,d=.6,opt={}){const y=opt.y===undefined?34:opt.y,s0=opt.s===undefined?.93:opt.s,x=opt.x||0,p=P(t,a,d,opt.ease||E.out);put(el,{o:clamp(p*1.6),x:(1-p)*x,y:(1-p)*y,s:s0+(1-s0)*p,b:(1-p)*(opt.blur===undefined?7:opt.blur)});return p}
+const SVG={
+key:'<svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 9-9M16 7l3 3M14 9l2 2"/></svg>',
+shield:'<svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>',
+check:'<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+file:'<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/></svg>',
+term:'<svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></svg>',
+edit:'<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg>',
+bolt:'<svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>',
+arrow:'<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+browser:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/></svg>',
+desktop:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+tablet:'<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M11 18h2"/></svg>',
+phone:'<svg viewBox="0 0 24 24"><rect x="7.5" y="2.5" width="9" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>',
+refresh:'<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/></svg>',
+coin:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.5-.9-1.5-1.4-2.8-1.4-1.6 0-2.7.8-2.7 2 0 3 5.6 1.5 5.6 4.4 0 1.2-1.2 2-2.9 2-1.4 0-2.5-.6-3-1.6M12 6v1.8M12 16.2V18"/></svg>',
+chev:'<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>'};
+const ic=(n,size)=>`<span class="ic" style="font-size:${size||40}px">${SVG[n]}</span>`;
+const fmtM=x=>'$'+x.toFixed(2);
+
+let T=null,SC=[],waterOK=false;
+
+/* ======================= backdrop ======================= */
+const BL=[['#8a8f99',900,-200,-260,.0],['#4b5563',820,1200,160,1.7],['#a0a4ad',760,500,720,3.1],['#374151',620,1500,640,4.4]];
+const blobs=BL.map(b=>{const e=mk('div','blob','',$('#bg'));e.style.cssText+=`width:${b[1]}px;height:${b[1]}px;background:radial-gradient(circle,${b[0]},transparent 68%)`;return e});
+const gridEl=mk('div','',null,$('#bg'));gridEl.style.cssText='position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px);background-size:72px 72px;-webkit-mask-image:radial-gradient(75% 75% at 50% 50%,#000,transparent)';
+function updBg(t){blobs.forEach((e,i)=>{const b=BL[i];e.style.transform=`translate(${b[2]+Math.sin(t*.22+b[4])*130}px,${b[3]+Math.cos(t*.17+b[4])*90}px)`});gridEl.style.backgroundPosition=`${(t*9)%72}px ${(t*6)%72}px`}
+
+/* ======================= water (WebGL, same shader as the app intro) ======================= */
+const WC=$('#water');let gl=null,prog=null,uT,uD,texs=[];
+function textTex(title,sub,ts){const c=document.createElement('canvas');c.width=1280;c.height=720;const x=c.getContext('2d');x.textAlign='center';x.textBaseline='middle';x.fillStyle='#fff';
+  x.font=`700 ${ts}px "Segoe UI Variable Display","Segoe UI",sans-serif`;if('letterSpacing' in x)x.letterSpacing=(-ts*.02)+'px';x.fillText(title,640,340);
+  x.font=`500 ${ts*.19}px "Segoe UI",sans-serif`;if('letterSpacing' in x)x.letterSpacing=(ts*.12)+'px';x.globalAlpha=.85;x.fillText(sub,640,340+ts*.78);return c}
+function initWater(){
+  try{gl=WC.getContext('webgl',{antialias:false,alpha:false,preserveDrawingBuffer:true})}catch(e){}
+  if(!gl)return;
+  const FS=`precision highp float;uniform vec2 R;uniform float T;uniform sampler2D tex;uniform vec4 D[12];
+float hgt(vec2 p){float h=sin(p.x*3.1+T*1.1+sin(p.y*2.3+T*.7))*.010+sin(dot(p,vec2(.6,.8))*6.+T*1.7)*.006+sin(dot(p,vec2(-.8,.6))*11.+T*2.3)*.003;
+ for(int i=0;i<12;i++){float age=T-D[i].z;if(age>0.){float r=length(p-D[i].xy),x=r-age*.42;float env=exp(-age*1.05)*D[i].w/(1.+r*5.);h+=env*.05*sin(x*40.)*smoothstep(.04,-.02,x)*exp(x*3.);h+=D[i].w*.018*exp(-r*r*900.)*exp(-age*5.)*cos(age*32.);}}return h;}
+float caustic(vec2 uv,float t){vec2 p=mod(uv*6.28318,6.28318)-250.;vec2 i=p;float c=1.;float inten=.005;for(int n=0;n<5;n++){float tt=t*(1.-(3.5/float(n+1)));i=p+vec2(cos(tt-i.x)+sin(tt+i.y),sin(tt-i.y)+cos(tt+i.x));c+=1./length(vec2(p.x/(sin(i.x+tt)/inten),p.y/(cos(i.y+tt)/inten)));}c/=5.;c=1.17-pow(c,1.4);return pow(abs(c),8.);}
+void main(){vec2 uv=gl_FragCoord.xy/R;vec2 p=(gl_FragCoord.xy-.5*R)/R.y;float e=.004;
+ float dx=hgt(p+vec2(e,0.))-hgt(p-vec2(e,0.));float dy=hgt(p+vec2(0.,e))-hgt(p-vec2(0.,e));
+ vec3 n=normalize(vec3(-dx/(2.*e)*.9,-dy/(2.*e)*.9,1.));vec2 w=n.xy;float asp=R.x/R.y;vec2 fuv=uv-w*.035;
+ vec3 col=mix(vec3(.035,.04,.05),vec3(.10,.11,.13),smoothstep(0.,1.,1.-length(p)*.9));
+ vec2 g=fract(vec2(fuv.x*asp,fuv.y)*9.);float tile=smoothstep(.0,.03,g.x)*smoothstep(.0,.03,g.y);col*=.78+.22*tile;
+ float c=caustic(fuv*vec2(asp,1.)*.55+w*.05,T*.55);col+=vec3(.46,.50,.58)*c*.55;
+ float rv=smoothstep(0.,.7,T-.45-length(p)*1.0);
+ float ta=texture2D(tex,uv-w*.060).a,tb=texture2D(tex,uv-w*.052).a,tc=texture2D(tex,uv-w*.044).a;vec3 ink=vec3(.93,.95,.98);
+ float glow=(texture2D(tex,uv+vec2(.004,0.)).a+texture2D(tex,uv-vec2(.004,0.)).a+texture2D(tex,uv+vec2(0.,.007)).a+texture2D(tex,uv-vec2(0.,.007)).a)*.25;
+ col+=vec3(.55,.6,.7)*glow*rv*.22;col=mix(col,ink,vec3(ta,tb,tc)*rv);
+ vec3 L=normalize(vec3(-.4,.5,.75));vec3 H=normalize(L+vec3(0.,0.,1.));float spec=pow(max(dot(n,H),0.),110.);col+=vec3(.92,.96,1.)*spec*1.3;
+ float fr=clamp((1.-n.z)*7.,0.,1.);col+=vec3(.55,.6,.68)*fr*.35;col+=vec3(.5,.55,.62)*pow(max(dot(n,normalize(vec3(.5,-.3,.8))),0.),60.)*.35;
+ col*=smoothstep(1.45,.3,length(p));gl_FragColor=vec4(pow(col,vec3(.92)),1.);}`;
+  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)){console.log(gl.getShaderInfoLog(o));return null}return o};
+  const vs=sh(gl.VERTEX_SHADER,'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'),fs=sh(gl.FRAGMENT_SHADER,FS);if(!vs||!fs){gl=null;return}
+  prog=gl.createProgram();gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);gl.useProgram(prog);
+  gl.viewport(0,0,1280,720);const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const al=gl.getAttribLocation(prog,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+  [textTex('Aqua Code','YOUR OWN CODING AGENT',200),textTex('Made by Saad','AQUA CODE',170)].forEach((c,i)=>{const tx=gl.createTexture();gl.activeTexture(gl.TEXTURE0+i);gl.bindTexture(gl.TEXTURE_2D,tx);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
+    [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]].forEach(a=>gl.texParameteri(gl.TEXTURE_2D,a[0],a[1]))});
+  gl.uniform2f(gl.getUniformLocation(prog,'R'),1280,720);uT=gl.getUniformLocation(prog,'T');uD=gl.getUniformLocation(prog,'D[0]');waterOK=true}
+function drawWater(t,mode){
+  if(!waterOK)return;const off=mode===0?.45:(T.ev.out.text-.45);const D=new Float32Array(48);for(let i=0;i<12;i++)D[i*4+2]=999;
+  const drops=mode===0?T.ev.s1.drop.map((d,i)=>[d,i?-.28:0,i?.08:0,i?.8:1]):T.ev.out.drop.map((d,i)=>[d,i?.26:-.08,i?-.06:.04,i?.75:1]);
+  drops.forEach((d,i)=>{D[i*4]=d[1];D[i*4+1]=d[2];D[i*4+2]=d[0]-off;D[i*4+3]=d[3]});
+  gl.uniform1i(gl.getUniformLocation(prog,'tex'),mode);gl.uniform1f(uT,t-off);gl.uniform4fv(uD,D);gl.drawArrays(gl.TRIANGLE_STRIP,0,4)}
+
+/* ======================= scenes ======================= */
+const SCN=$('#scenes');
+function newScene(){const el=mk('div','scene','',SCN);return el}
+
+/* ---- scene 2: keys + providers ---- */
+function scene2(){
+  const R=newScene(),ev=T.ev.s2,full='AIzaSyC3k••••••••••••••';
+  const h=mk('div','h1','Bring your <em>own key</em>',R);h.style.cssText+='left:140px;top:130px;font-size:84px';
+  const card=mk('div','g','',R);card.style.cssText+='left:140px;top:340px;width:780px;height:460px;padding:44px 50px';
+  card.innerHTML=`<div style="display:flex;align-items:center;gap:20px;font-size:38px;color:var(--mut)">${ic('key',46)}<span>Gemini API key</span></div>
+   <div id="fld" class="mono" style="margin-top:34px;height:96px;border-radius:26px;background:rgba(0,0,0,.32);border:2px solid rgba(255,255,255,.14);display:flex;align-items:center;padding:0 32px;font-size:46px;letter-spacing:2px;box-shadow:inset 0 4px 14px rgba(0,0,0,.4)"></div>
+   <div id="sv" style="margin-top:36px;display:flex;align-items:center;gap:18px"><span class="chip" style="color:var(--green)"><i></i>Saved on this PC only</span></div>
+   <div style="margin-top:30px;font-size:30px;color:var(--dim)">Free tier. No card needed.</div>`;
+  const fld=$('#fld',card),sv=$('#sv',card);
+  const cnt=mk('div','abs','<span id="n" style="font-size:210px;font-weight:700;letter-spacing:-6px;line-height:1">0</span><span style="font-size:46px;color:var(--mut);margin-left:26px">AI providers<br>ready to use</span>',R);cnt.style.cssText+='left:1010px;top:96px;display:flex;align-items:flex-end';
+  const nEl=$('#n',cnt);
+  const names=['Gemini','Groq','Mistral','Cerebras','OpenRouter','DeepSeek','NVIDIA NIM','Cohere','Cloudflare AI','GitHub Models','Hugging Face','+ 15 more'];
+  const box=mk('div','abs','',R);box.style.cssText+='left:1010px;top:400px;width:850px;display:flex;flex-wrap:wrap;gap:22px 18px';
+  const pills=names.map((n,i)=>mk('div','pill',(i<11?'<span class="dot"></span>':'')+esc(n),box));
+  pills.forEach(p=>p.style.cssText+='font-size:32px;padding:12px 26px');pills[11].style.color='var(--mut)';
+  return{el:R,upd(t){
+    appear(h,t,ev.card-.1,.8,{y:40});appear(card,t,ev.card,.8,{y:60,s:.9,ease:E.spring});
+    const k=Math.floor(P(t,ev.type[0],ev.type[1]-ev.type[0],E.lin)*full.length);const caret=(t>ev.type[0]&&t<ev.saved&&Math.floor(t*3)%2===0)?'<span style="display:inline-block;width:4px;height:52px;background:#fff;margin-left:6px"></span>':'';
+    fld.innerHTML=esc(full.slice(0,k))+caret;appear(sv,t,ev.saved,.5,{y:16,s:.8,ease:E.spring});
+    appear(cnt,t,ev.pills[0]-.4,.7);pills.forEach((p,i)=>appear(p,t,ev.pills[i],.6,{y:30,s:.6,ease:E.spring}));
+    nEl.textContent=Math.round(P(t,ev.count[0],ev.count[1]-ev.count[0],E.inout)*26)}}}
+
+/* ---- scene 3: the agent at work ---- */
+function scene3(){
+  const R=newScene(),ev=T.ev.s3,typed='Build me a todo app and test it.';
+  const win=mk('div','g','',R);win.style.cssText+='left:360px;top:56px;width:1200px;height:790px;border-radius:44px;overflow:hidden';
+  win.innerHTML=`<div style="height:96px;border-bottom:1.5px solid rgba(255,255,255,.1);display:flex;align-items:center;padding:0 36px;gap:14px;position:relative">
+     <span style="width:20px;height:20px;border-radius:50%;background:#ff6b6b99"></span><span style="width:20px;height:20px;border-radius:50%;background:#ffb45499"></span><span style="width:20px;height:20px;border-radius:50%;background:#6ee7a899"></span>
+     <span style="flex:1"></span><span class="pill" style="font-size:28px;padding:10px 26px;gap:12px"><span class="dot" style="width:12px;height:12px"></span><span style="font-size:20px;letter-spacing:2px;color:var(--dim)">TALKING WITH</span><b>Groq</b><span class="mono" style="color:var(--mut);font-size:25px">gpt-oss-20b</span></span></div>
+     <div id="chat" style="padding:24px 40px;display:flex;flex-direction:column;gap:10px"></div>`;
+  const chat=$('#chat',win);
+  const ub=mk('div','',null,chat);ub.style.cssText='align-self:flex-end';const ubb=mk('div','bub ub','',ub);
+  const tag=mk('div','',`<span class="chip" style="color:var(--teal);font-size:24px;padding:4px 16px"><i></i>Lite</span> <b style="font-size:26px">Groq</b> <span class="mono" style="color:var(--mut);font-size:25px">gpt-oss-20b</span>`,chat);tag.style.cssText='display:flex;gap:14px;align-items:center;margin:2px 4px';
+  const defs=[['file','Write index.html','created'],['file','Write app.js','created'],['term','Run node test.js','fail'],['edit','Edit app.js','edited'],['term','Run node test.js','ok']];
+  const cards=defs.map((d,i)=>{const c=mk('div','tool',`<span class="ti">${ic(d[0],28)}</span><span class="tt">${esc(d[1])}</span><span class="st"></span>`,chat);return{el:c,st:$('.st',c),d}});
+  const fin=mk('div','bub ab',`Done. Your todo app is ready, and the tests pass.`,chat);
+  return{el:R,upd(t){
+    appear(win,t,ev.win,.8,{y:70,s:.92,ease:E.spring});
+    const k=Math.floor(P(t,ev.type[0],ev.type[1]-ev.type[0],E.lin)*typed.length);ubb.innerHTML=esc(typed.slice(0,k))+((t>ev.type[0]&&t<ev.send&&Math.floor(t*3)%2===0)?'<span style="display:inline-block;width:3px;height:34px;background:#fff;margin-left:4px;vertical-align:-6px"></span>':'');
+    put(ub,{o:t>ev.type[0]-.2?1:0});appear(tag,t,ev.tag,.5,{y:14,s:1});
+    cards.forEach((c,i)=>{const t0=ev.cards[i];appear(c.el,t,t0,.5,{y:26,x:-30,s:.96});
+      const done=t0+.85;let h='';if(t<t0+.2)h='';else if(t<done){h=`<span class="spin" style="transform:rotate(${(t*540)%360}deg)"></span> running`}
+      else if(c.d[2]==='fail'){h=`<span style="color:var(--red);display:flex;align-items:center;gap:8px">${ic('x',30)} 1 test failed</span>`;c.el.style.borderColor='rgba(255,107,107,.6)';c.el.style.background='rgba(255,107,107,.1)'}
+      else{h=`<span style="color:var(--green);display:flex;align-items:center;gap:8px">${ic('check',30)} ${c.d[2]==='ok'?'all tests passed':c.d[2]}</span>`;c.el.style.borderColor='rgba(110,231,168,.28)';c.el.style.background='rgba(255,255,255,.06)'}
+      if(t<done){c.el.style.borderColor='rgba(255,255,255,.12)';c.el.style.background='rgba(255,255,255,.06)'}c.st.innerHTML=h});
+    appear(fin,t,ev.done,.6,{y:20,s:.96})}}}
+
+/* ---- scene 4: cheapest first ---- */
+function scene4(){
+  const R=newScene(),ev=T.ev.s4;
+  const h=mk('div','h1','Cheapest first.',R);h.style.cssText+='left:150px;top:96px';const sb=mk('div','sub','Strong only when needed.',R);sb.style.cssText+='left:156px;top:214px';
+  const tiers=[['Pro','nvidia/…ultra','$$$','#e8eaee',300],['Standard','gemini-flash-latest','$$','#a79fc2',470],['Lite','gpt-oss-20b','$','#8fb8b2',640]];
+  const glow=mk('div','abs','',R);glow.style.cssText+='left:130px;width:700px;height:150px;border-radius:36px;border:3px solid #8fb8b2;box-shadow:0 0 60px 6px rgba(143,184,178,.45),inset 0 0 40px rgba(143,184,178,.15);pointer-events:none;top:0';
+  const cs=tiers.map(x=>{const c=mk('div','card',`<span style="width:26px;height:26px;border-radius:50%;background:${x[3]};box-shadow:0 0 22px ${x[3]};flex:none"></span><div style="flex:1"><div style="font-size:46px;font-weight:650">${x[0]}</div><div class="mono" style="font-size:28px;color:var(--mut);margin-top:4px">${x[1]}</div></div><div style="font-size:50px;font-weight:700;color:${x[3]}">${x[2]}</div>`,R);c.style.cssText+=`left:140px;top:${x[4]}px;width:680px;height:130px;display:flex;align-items:center;gap:30px;padding:0 40px`;return c});
+  const fails=[0,1].map(i=>{const e=mk('div','tool',`<span class="ti" style="color:var(--red)">${ic('x',28)}</span><span class="tt">Step failed: tests not passing</span>`,R);e.style.cssText+=`position:absolute;left:960px;top:${292+i*94}px;width:760px;border-color:rgba(255,107,107,.5);background:rgba(255,107,107,.1)`;return e});
+  const ban=mk('div','card',`<span class="chip" style="color:#8fb8b2"><i></i>Lite</span><span class="ic" style="font-size:46px">${SVG.arrow}</span><span class="chip" style="color:#e8eaee"><i></i>Pro</span><div style="font-size:34px;font-weight:600;margin-left:14px">A stronger model takes over,<br><span style="color:var(--mut);font-weight:400">with the full conversation</span></div>`,R);ban.style.cssText+='left:960px;top:508px;width:830px;height:150px;display:flex;align-items:center;gap:22px;padding:0 36px;border-color:rgba(167,159,194,.55)';
+  const sav=mk('div','card','',R);sav.style.cssText+='left:960px;top:690px;width:830px;height:150px;display:flex;align-items:center;gap:28px;padding:0 40px;border-color:rgba(110,231,168,.4);background:linear-gradient(145deg,rgba(110,231,168,.14),rgba(110,231,168,.03))';
+  sav.innerHTML=`<span style="color:var(--green)">${ic('coin',74)}</span><div><div style="font-size:30px;color:var(--mut)">Saved vs. always using the top model</div><div id="sv" style="font-size:78px;font-weight:700;color:var(--green);letter-spacing:-2px">$0.00</div></div>`;
+  const svEl=$('#sv',sav);
+  return{el:R,upd(t){
+    appear(h,t,ev.ladder-.1,.8,{y:40});appear(sb,t,ev.ladder+.15,.8,{y:30});
+    cs.forEach((c,i)=>appear(c,t,ev.ladder+.1+i*.14,.7,{y:40,ease:E.spring}));
+    const m=P(t,ev.handover,.9,E.inout);const gy=640+(300-640)*m;const col=m<.5?'#8fb8b2':'#e8eaee';
+    glow.style.top=gy+'px';glow.style.borderColor=col;glow.style.boxShadow=`0 0 ${60+30*Math.sin(m*Math.PI)}px 6px ${col}73,inset 0 0 40px ${col}26`;put(glow,{o:clamp((t-ev.ladder-.4)*2)});
+    fails.forEach((f,i)=>appear(f,t,ev.fails[i],.5,{y:20,x:40,s:.96}));appear(ban,t,ev.handover,.7,{y:30,s:.9,ease:E.spring});
+    appear(sav,t,ev.saved[0]-.4,.7,{y:30});svEl.textContent=fmtM(P(t,ev.saved[0],ev.saved[1]-ev.saved[0],E.inout)*.42)}}}
+
+/* ---- scene 5: automatic switching ---- */
+function scene5(){
+  const R=newScene(),ev=T.ev.s5;
+  const h=mk('div','h1','When one runs out,<br><em>the next takes over.</em>',R);h.style.cssText+='left:150px;top:80px;font-size:92px';
+  const P3=[['Gemini','gemini-flash-lite-latest',140],['Groq','gpt-oss-20b',700],['Mistral','mistral-small-latest',1260]];
+  const cards=P3.map((p,i)=>{const c=mk('div','card',`<div style="display:flex;align-items:center;gap:18px"><span class="dot" id="d${i}" style="width:18px;height:18px"></span><span style="font-size:52px;font-weight:700">${p[0]}</span><span id="s${i}" style="margin-left:auto;font-size:26px;color:var(--mut);letter-spacing:1px"></span></div>
+     <div class="mono" style="font-size:27px;color:var(--mut);margin-top:12px">${p[1]}</div>
+     <div class="bar" style="left:44px;right:44px;top:236px"><i id="b${i}" style="width:${i?8:46}%;background:#6ee7a8"></i></div>
+     <div style="position:absolute;left:44px;top:268px;font-size:25px;color:var(--dim)" id="l${i}">${i?'plenty left':'free requests used today'}</div>`,R);c.style.cssText+=`left:${p[2]}px;top:400px;width:520px;height:330px;padding:44px`;return c});
+  const link=mk('div','abs','',R);link.style.cssText+='left:640px;top:556px;width:100px;height:6px;border-radius:6px;background:linear-gradient(90deg,#6ee7a8,#fff);box-shadow:0 0 24px #fff;transform-origin:left;opacity:0';
+  const ban=mk('div','card',`<span style="color:var(--amber)">${ic('bolt',54)}</span><div style="font-size:40px;font-weight:650">Gemini hit its limit. <span style="color:var(--mut);font-weight:400">Switching to Groq...</span></div>`,R);ban.style.cssText+='left:360px;top:752px;width:1200px;height:96px;display:flex;align-items:center;gap:26px;padding:0 44px;border-color:rgba(255,180,84,.5)';
+  const talk=mk('div','abs','',R);talk.style.cssText+='left:0;right:0;top:742px;display:flex;justify-content:center;opacity:0';
+  talk.innerHTML=`<span class="pill" style="font-size:40px;padding:16px 40px"><span class="dot"></span><span style="font-size:22px;letter-spacing:3px;color:var(--dim)">TALKING WITH</span><b>Groq</b><span class="mono" style="color:var(--mut);font-size:34px">gpt-oss-20b</span></span>`;
+  return{el:R,upd(t){
+    appear(h,t,ev.cards-.1,.8,{y:40});cards.forEach((c,i)=>appear(c,t,ev.cards+i*.14,.75,{y:50,ease:E.spring}));
+    const f=P(t,ev.fill[0],ev.fill[1]-ev.fill[0],E.inout);const b0=$('#b0',cards[0]);b0.style.width=(46+54*f)+'%';b0.style.background=f>.5?'#ff6b6b':'#6ee7a8';
+    const lim=t>ev.limit;$('#d0',cards[0]).style.background=lim?'#ff6b6b':'#6ee7a8';$('#d0',cards[0]).style.boxShadow='0 0 18px '+(lim?'#ff6b6b':'#6ee7a8');
+    $('#s0',cards[0]).textContent=lim?'LIMIT REACHED':'';$('#s0',cards[0]).style.color='#ff6b6b';$('#l0',cards[0]).textContent=lim?'switching...':'free requests used today';
+    const sw=P(t,ev.switch,.7,E.inout);link.style.opacity=sw>0&&sw<1?1:0;link.style.transform=`scaleX(${sw*5.4})`;
+    const g=P(t,ev.groq,.6,E.spring);cards[1].style.borderColor=`rgba(110,231,168,${.55*g})`;cards[1].style.boxShadow=`inset 1.5px 1.5px 0 rgba(255,255,255,.3),0 26px 60px -20px rgba(0,0,0,.7),0 0 ${70*g}px rgba(110,231,168,${.3*g})`;
+    $('#s1',cards[1]).textContent=g>.3?'IN USE':'';$('#s1',cards[1]).style.color='#6ee7a8';put(cards[0],{o:1-.45*P(t,ev.limit,.8),y:0});
+    appear(ban,t,ev.limit,.6,{y:30,s:.94});const bo=1-P(t,ev.pill-.1,.4);ban.style.opacity=Math.min(parseFloat(ban.style.opacity),bo);
+    appear(talk,t,ev.pill,.6,{y:30,s:.9,ease:E.spring});{const l=$('#l1',cards[1]);l.textContent=t>ev.tags[1]?'Lite  -  answer delivered':t>ev.tags[0]?'Lite  -  gpt-oss-20b is working':'plenty left';l.style.color=t>ev.tags[0]?'#6ee7a8':''}}}}
+
+/* ---- scene 6: preview ---- */
+function scene6(){
+  const R=newScene(),ev=T.ev.s6;
+  const h=mk('div','h1','See it <em>live.</em>',R);h.style.cssText+='left:140px;top:200px;font-size:128px';const sb=mk('div','sub','A preview, right next to the chat.',R);sb.style.cssText+='left:146px;top:360px;font-size:46px;width:520px;line-height:1.25';
+  const pb=mk('div','pill',`${ic('browser',44)}Preview`,R);pb.style.cssText+='position:absolute;left:146px;top:560px;font-size:46px;padding:22px 48px';
+  const win=mk('div','g','',R);win.style.cssText+='left:760px;top:70px;width:1060px;height:750px;border-radius:40px;overflow:hidden';
+  win.innerHTML=`<div style="height:100px;display:flex;align-items:center;gap:20px;padding:0 32px;border-bottom:1.5px solid rgba(255,255,255,.1)">
+     <span style="color:var(--mut)">${ic('refresh',38)}</span>
+     <div id="url" class="mono" style="flex:1;height:60px;border-radius:30px;background:rgba(0,0,0,.3);border:1.5px solid rgba(255,255,255,.12);display:flex;align-items:center;padding:0 28px;font-size:30px"></div>
+     <span id="dv0" style="color:#fff">${ic('desktop',40)}</span><span id="dv1" style="color:var(--dim)">${ic('tablet',40)}</span><span id="dv2" style="color:var(--dim)">${ic('phone',40)}</span></div>
+     <div style="position:absolute;left:0;right:0;top:100px;bottom:0;background:rgba(0,0,0,.25);display:flex;justify-content:center;padding-top:30px"><div id="vp" style="width:1000px;height:600px;background:#fff;border-radius:18px;overflow:hidden;color:#17181c;box-shadow:0 0 0 8px #0c0d10,0 30px 60px rgba(0,0,0,.5)">
+       <div style="padding:34px 40px"><div style="font-size:50px;font-weight:800;letter-spacing:-1px">My Todos</div><div style="margin-top:22px;height:70px;border-radius:16px;background:#f1f2f5;border:2px solid #e1e3e8;display:flex;align-items:center;padding:0 24px;color:#9aa0ab;font-size:28px">Add a task...</div><div id="items" style="margin-top:22px;display:flex;flex-direction:column;gap:14px"></div></div></div></div>`;
+  const url=$('#url',win),vp=$('#vp',win),items=$('#items',win),full='localhost:3000';
+  const lab=['Buy milk','Ship the demo','Call Saad','Water the plants'];
+  const its=lab.map(l=>mk('div','',`<span style="width:38px;height:38px;border-radius:50%;border:3px solid #c7cad3;display:grid;place-items:center;color:#fff;flex:none" class="ck"></span><span style="font-size:34px">${l}</span>`,items));its.forEach(e=>e.style.cssText='display:flex;align-items:center;gap:22px;padding:20px 24px;border-radius:18px;background:#f7f8fa;border:2px solid #eceef2');
+  return{el:R,upd(t){
+    appear(h,t,ev.win-.1,.8,{y:40});appear(sb,t,ev.win+.1,.8,{y:30});appear(pb,t,ev.win+.2,.7,{y:30,ease:E.spring});
+    const pg=.5+.5*Math.sin(t*5);pb.style.boxShadow=`inset 1.5px 1.5px 0 rgba(255,255,255,.35),0 0 ${40+30*pg}px rgba(255,255,255,${.12+.12*pg}),0 18px 40px -12px rgba(0,0,0,.6)`;
+    appear(win,t,ev.win,.9,{y:70,x:80,s:.94,ease:E.spring});
+    const k=Math.floor(P(t,ev.url[0],ev.url[1]-ev.url[0],E.lin)*full.length);url.textContent=full.slice(0,k);
+    its.forEach((e,i)=>{const p=appear(e,t,ev.items[i],.55,{y:30,s:.9,ease:E.spring});const c=$('.ck',e);if(i===0||i===1){const d=P(t,ev.items[i]+.9,.3);c.style.background=d>.5?'#35c47a':'transparent';c.style.borderColor=d>.5?'#35c47a':'#c7cad3';c.innerHTML=d>.5?SVG.check.replace('<svg','<svg style="width:24px;height:24px;stroke:#fff;fill:none;stroke-width:3"'):''}});
+    const d1=P(t,ev.dev[0],.8,E.inout),d2=P(t,ev.dev[1],.8,E.inout);const w=1000+(640-1000)*d1+(380-640)*d2;vp.style.width=w+'px';vp.style.borderRadius=(18+30*d2)+'px';
+    ['dv0','dv1','dv2'].forEach((id,i)=>{const on=(i===0&&d1<.5)||(i===1&&d1>=.5&&d2<.5)||(i===2&&d2>=.5);$('#'+id,win).style.color=on?'#fff':'var(--dim)'})}}}
+
+const EVP=k=>T.ev.p[String(k)];
+/* ======================= tutorial + feature scenes (driven by T.ev.p[k]) ======================= */
+Object.assign(SVG,{
+alert:'<svg viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17.5v.01"/></svg>',
+lock:'<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+copy:'<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+folder:'<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>',
+search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>',
+plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>'});
+function heading(R,tag,html,t0,size){
+  const c=tag?mk('div','chip',tag,R):null;if(c)c.style.cssText+='position:absolute;left:146px;top:64px;color:#cfd3da;font-size:26px;padding:4px 20px';
+  const h=mk('div','h1',html,R);h.style.cssText+=`left:140px;top:112px;font-size:${size||86}px`;
+  return{upd(t){if(c)appear(c,t,t0-.25,.5,{y:16,s:1});appear(h,t,t0-.1,.8,{y:36})}}}
+function mkCursor(R){
+  const c=mk('div','abs','<svg viewBox="0 0 24 24" width="58" height="58" style="filter:drop-shadow(0 5px 8px rgba(0,0,0,.65))"><path d="M5 3l14 8-6 2 4 7-3 1.5-4-7-5 4z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>',R);c.style.cssText+='left:0;top:0;z-index:60;opacity:0';
+  const ring=mk('div','abs','',R);ring.style.cssText+='left:0;top:0;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;border:4px solid rgba(255,255,255,.85);opacity:0;z-index:59';return{c,ring}}
+function drive(cu,t,pts,clicks){
+  let x=pts[0][1],y=pts[0][2];
+  for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];if(t>=a[0]&&t<=b[0]){const p=E.inout(clamp((t-a[0])/(b[0]-a[0])));x=a[1]+(b[1]-a[1])*p;y=a[2]+(b[2]-a[2])*p}else if(t>b[0]){x=b[1];y=b[2]}}
+  const last=pts[pts.length-1][0];const vis=clamp((t-(pts[0][0]-.25))/.3)*(1-clamp((t-(last+.7))/.4));
+  cu.c.style.opacity=vis;cu.c.style.transform=`translate(${x-12}px,${y-7}px)`;let ro=0;
+  clicks.forEach(tc=>{const p=(t-tc)/.55;if(p>0&&p<1){ro=1-p;cu.ring.style.transform=`translate(${x}px,${y}px) scale(${.4+p*1.1})`}});cu.ring.style.opacity=ro;return{x,y}}
+const mono=(s,sz,col)=>`<span class="mono" style="font-size:${sz||30}px;color:${col||'var(--mut)'}">${s}</span>`;
+function bigCard(R,l,t_,w,h,html,extra){const c=mk('div','card',html,R);c.style.cssText+=`left:${l}px;top:${t_}px;width:${w}px;height:${h}px;${extra||''}`;return c}
+
+/* --- 6: what is an API key --- */
+function sceneKey1(){
+  const R=newScene(),e=EVP(6),hd=heading(R,'BASICS','What is an <em>API key?</em>',e[0]);
+  const A=bigCard(R,150,370,520,360,`<img src="logo.png" style="width:130px;height:130px"><div style="font-size:54px;font-weight:700;margin-top:18px">Aqua Code</div><div style="font-size:30px;color:var(--mut)">on your PC</div>`,'display:flex;flex-direction:column;align-items:center;justify-content:center');
+  const B=bigCard(R,1250,370,520,360,`<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;max-width:400px">${['Gemini','Groq','Mistral','OpenRouter'].map(n=>`<span class="pill" style="font-size:28px;padding:8px 20px">${n}</span>`).join('')}</div><div style="font-size:54px;font-weight:700;margin-top:26px">AI service</div><div style="font-size:30px;color:var(--mut)">on the internet</div>`,'display:flex;flex-direction:column;align-items:center;justify-content:center');
+  const line=mk('div','abs','',R);line.style.cssText+='left:700px;top:548px;width:520px;height:0;border-top:5px dashed rgba(255,255,255,.28)';
+  const key=mk('div','pill',`<span style="color:#e8eaee">${ic('key',54)}</span>Your key`,R);key.style.cssText+='position:absolute;left:0;top:0;font-size:42px;padding:14px 32px';
+  const ans=mk('div','pill',`<span style="color:#6ee7a8">${ic('check',46)}</span>Answer`,R);ans.style.cssText+='position:absolute;left:0;top:0;font-size:40px;padding:12px 30px';
+  const c1=mk('div','chip','Free to create',R),c2=mk('div','chip',`${ic('lock',32)} Saved only on your PC`,R);
+  c1.style.cssText+='position:absolute;left:330px;top:800px;color:#6ee7a8;font-size:38px;padding:12px 32px';c2.style.cssText+='position:absolute;left:840px;top:800px;color:#cfd3da;font-size:38px;padding:12px 32px';
+  return{el:R,upd(t){hd.upd(t);appear(A,t,e[0],.7,{y:50,ease:E.spring});appear(B,t,e[0]+.1,.7,{y:50,ease:E.spring});put(line,{o:clamp((t-e[0]-.3)*2)});
+    const p1=P(t,e[2],.9,E.inout),a1=clamp((t-e[1])/.4)*(1-clamp((t-e[2]-.85)*5));put(key,{o:a1,x:690+p1*440,y:512,s:.9+.1*clamp((t-e[1])/.4)});
+    const p2=P(t,e[3],.9,E.inout),a2=clamp((t-e[3])/.25)*(1-clamp((t-e[3]-.85)*5));put(ans,{o:a2,x:1130-p2*440,y:512});
+    appear(c1,t,e[4],.5,{y:20,s:.85,ease:E.spring});appear(c2,t,e[5],.5,{y:20,s:.85,ease:E.spring})}}}
+
+/* --- 7: one key per provider --- */
+function sceneKey2(){
+  const R=newScene(),e=EVP(7),hd=heading(R,'BASICS','One key <em>per provider.</em>',e[0]);
+  const names=[['Gemini','AIzaSy••••••••••'],['Groq','gsk_••••••••••••'],['Mistral','••••••••••••••••']];
+  const cs=names.map((n,i)=>bigCard(R,140+i*580,300,540,230,`<div style="display:flex;align-items:center;gap:16px;font-size:44px;font-weight:650"><span style="color:#cfd3da">${ic('key',48)}</span>${n[0]}</div><div style="margin-top:18px">${mono(n[1],34)}</div><div style="margin-top:14px;font-size:27px;color:var(--dim)">its own free limits</div>`,'padding:36px 40px'));
+  const w1=bigCard(R,140,590,800,270,`<div style="color:#ffb454">${ic('alert',68)}</div><div style="font-size:48px;font-weight:700;margin-top:14px">Never share a key.</div><div style="font-size:31px;color:var(--mut);margin-top:10px">Not in chats, screenshots or public code.</div>`,'padding:40px;border-color:rgba(255,180,84,.5)');
+  const w2=bigCard(R,980,590,800,270,`<div style="color:#6ee7a8">${ic('refresh',68)}</div><div style="font-size:48px;font-weight:700;margin-top:14px">Leaked? Replace it.</div><div style="font-size:31px;color:var(--mut);margin-top:10px">Delete it on the provider's site and make a new one.</div>`,'padding:40px;border-color:rgba(110,231,168,.4)');
+  return{el:R,upd(t){hd.upd(t);cs.forEach((c,i)=>appear(c,t,[e[0],e[1],e[2]][i]+(i?0:0),.7,{y:50,ease:E.spring}));appear(w1,t,e[4],.7,{y:50,ease:E.spring});appear(w2,t,e[5]-.2,.7,{y:50,ease:E.spring})}}}
+
+/* --- 8: the GitHub list --- */
+function sceneGit(){
+  const R=newScene(),e=EVP(8),hd=heading(R,'STEP 1','Find free <em>credit.</em>',e[0]);
+  const win=mk('div','g','',R);win.style.cssText+='left:330px;top:270px;width:1260px;height:650px;border-radius:40px;overflow:hidden';
+  win.innerHTML=`<div style="height:84px;display:flex;align-items:center;padding:0 30px;border-bottom:1.5px solid rgba(255,255,255,.1)"><div class="mono" style="flex:1;height:52px;border-radius:26px;background:rgba(0,0,0,.3);border:1.5px solid rgba(255,255,255,.12);display:flex;align-items:center;padding:0 26px;font-size:27px">github.com/mnfst/awesome-free-llm-apis</div></div>
+   <div style="padding:26px 40px 0"><div style="font-size:42px;font-weight:700">awesome-free-llm-apis</div><div style="font-size:27px;color:var(--mut);margin-top:6px">LLM APIs with permanent free tiers</div><div id="rows" style="margin-top:22px;display:flex;flex-direction:column;gap:10px"></div></div>`;
+  const data=[['Google Gemini','Flash models','No card'],['Groq','gpt-oss, very fast','No card'],['Cerebras','very fast','No card'],['Mistral','free Experiment plan','Phone check'],['OpenRouter','":free" models','No card'],['Cohere','free trial key','Non-commercial']];
+  const rows=data.map(r=>{const x=mk('div','',`<span class="dot" style="width:14px;height:14px"></span><b style="width:270px;font-size:32px">${r[0]}</b><span style="flex:1;font-size:28px;color:var(--mut)">${r[1]}</span><span class="chip bdg" style="color:#6ee7a8;font-size:22px;padding:3px 16px">${r[2]}</span>`,$('#rows',win));x.style.cssText='display:flex;align-items:center;gap:20px;padding:12px 22px;border-radius:18px;background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.1)';return x});
+  return{el:R,upd(t){hd.upd(t);appear(win,t,e[0],.8,{y:60,s:.93,ease:E.spring});rows.forEach((r,i)=>appear(r,t,e[1+i],.5,{y:20,x:-30,s:.97}));rows.forEach(r=>{$('.bdg',r).style.opacity=P(t,e[7],.6)})}}}
+
+/* --- 9: create a Gemini key --- */
+function sceneGemini(){
+  const R=newScene(),e=EVP(9),hd=heading(R,'STEP 2','Create a <em>free key.</em>',e[0]),cu=mkCursor(R);
+  const lab=['Open AI Studio','Sign in with Google','Click Create API key'];
+  const st=lab.map((l,i)=>{const c=bigCard(R,140,330+i*130,500,104,`<span class="num" style="width:56px;height:56px;border-radius:50%;border:3px solid #cfd3da;display:grid;place-items:center;font-size:30px;font-weight:700;flex:none">${i+1}</span><span style="font-size:34px;font-weight:600">${l}</span>`,'display:flex;align-items:center;gap:24px;padding:0 30px;border-radius:28px');return c});
+  const win=mk('div','g','',R);win.style.cssText+='left:700px;top:230px;width:1100px;height:660px;border-radius:40px;overflow:hidden';
+  win.innerHTML=`<div style="height:90px;display:flex;align-items:center;padding:0 30px;border-bottom:1.5px solid rgba(255,255,255,.1)"><div id="u" class="mono" style="flex:1;height:54px;border-radius:27px;background:rgba(0,0,0,.3);border:1.5px solid rgba(255,255,255,.12);display:flex;align-items:center;padding:0 26px;font-size:28px"></div></div>
+   <div style="padding:34px 44px"><div style="font-size:46px;font-weight:700">API keys</div><div style="font-size:28px;color:var(--mut);margin-top:6px">Free tier. No credit card needed.</div>
+   <div id="btn" style="margin:46px 0 0;display:inline-flex;align-items:center;gap:16px;padding:22px 44px;border-radius:999px;background:linear-gradient(160deg,#f4f5f7,#cfd3da 60%,#8d929c);color:#14161a;font-size:36px;font-weight:700;box-shadow:inset 0 2px 0 rgba(255,255,255,.7),0 16px 40px -10px rgba(0,0,0,.6)">${ic('plus',40)}Create API key</div>
+   <div id="krow" style="margin-top:48px;display:flex;align-items:center;gap:22px;padding:24px 30px;border-radius:26px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.14)"><span style="color:#cfd3da">${ic('key',46)}</span><div style="flex:1"><div style="font-size:30px;font-weight:600">My first key</div>${mono('AIzaSy••••••••••••••••••••',30)}</div><span class="chip" style="color:#6ee7a8;font-size:24px;padding:4px 18px"><i></i>Free tier</span><span id="cp" style="color:#fff">${ic('copy',50)}</span></div></div>`;
+  const url=$('#u',win),btn=$('#btn',win),krow=$('#krow',win),cp=$('#cp',win),full='aistudio.google.com/apikey';
+  const marks=[e[3],e[3]+.3,e[6]];
+  return{el:R,upd(t){hd.upd(t);st.forEach((c,i)=>{appear(c,t,e[0]+.1*i,.7,{y:40,ease:E.spring});const d=t>marks[i];const n=$('.num',c);n.style.background=d?'#6ee7a8':'transparent';n.style.borderColor=d?'#6ee7a8':'#cfd3da';n.style.color=d?'#0a1a10':'#fff';n.innerHTML=d?SVG.check.replace('<svg','<svg style="width:30px;height:30px;fill:none;stroke:#0a1a10;stroke-width:3.2;stroke-linecap:round"'):(i+1)});
+    appear(win,t,e[0],.8,{y:60,x:60,s:.93,ease:E.spring});url.textContent=full.slice(0,Math.floor(P(t,e[1],e[2]-e[1],E.lin)*full.length));
+    appear(btn,t,e[3],.5,{y:16,s:.85,ease:E.spring});const pr=P(t,e[5],.25);btn.style.transform=`scale(${1-.06*Math.sin(pr*Math.PI)})`;
+    appear(krow,t,e[6],.6,{y:30,s:.92,ease:E.spring});const pc=P(t,e[7],.5);cp.style.transform=`scale(${1+.35*Math.sin(pc*Math.PI)})`;
+    drive(cu,t,[[e[4],1640,820],[e[5]-.02,1190,650]],[e[5]])}}}
+
+/* --- 10: the same for other providers --- */
+function sceneMore(){
+  const R=newScene(),e=EVP(10),hd=heading(R,'STEP 2','Same steps, <em>more keys.</em>',e[0]);
+  const data=[['Groq','console.groq.com/keys','gsk_••••••••••••'],['Cerebras','cloud.cerebras.ai','csk-••••••••••••'],['Mistral','console.mistral.ai/api-keys','••••••••••••••••'],['OpenRouter','openrouter.ai/keys','sk-or-••••••••••']];
+  const cs=data.map((d,i)=>bigCard(R,140+(i%2)*860,290+Math.floor(i/2)*290,800,260,`<div style="display:flex;align-items:center"><span style="font-size:48px;font-weight:700">${d[0]}</span><span style="flex:1"></span><span class="chip ck" style="color:#6ee7a8;font-size:24px;padding:4px 18px">${ic('check',26)} Free tier</span></div><div style="margin-top:8px">${mono(d[1],29,'var(--dim)')}</div>
+    <div style="margin-top:26px;display:flex;align-items:center;gap:20px"><span class="pill" style="font-size:28px;padding:12px 28px">${ic('plus',30)}Create key</span><span class="kk" style="display:flex;align-items:center;gap:12px;color:#cfd3da">${ic('key',34)}${mono(d[2],30,'#e8eaee')}</span></div>`,'padding:34px 40px'));
+  const ban=mk('div','abs',`${ic('bolt',64)}<span>Every key is <b>one more backup.</b></span>`,R);ban.style.cssText+='left:0;right:0;top:880px;display:flex;justify-content:center;align-items:center;gap:20px;font-size:50px;color:#e8eaee';
+  return{el:R,upd(t){hd.upd(t);cs.forEach((c,i)=>{appear(c,t,e[i],.65,{y:50,ease:E.spring});const k=P(t,e[4+i],.5);$('.ck',c).style.opacity=k;$('.kk',c).style.opacity=k});appear(ban,t,e[8],.6,{y:24,s:.94})}}}
+
+/* --- 11: providers that need no key --- */
+function sceneNoKey(){
+  const R=newScene(),e=EVP(11),hd=heading(R,'OPTIONAL','No key? <em>No problem.</em>',e[0]);
+  const names=['Kilo Code','LLM7.io','OVHcloud AI','Pollinations'];
+  const cs=names.map((n,i)=>bigCard(R,140+i*440,330,400,350,`<div style="font-size:42px;font-weight:700">${n}</div><span class="chip" style="color:#ffb454;font-size:22px;padding:3px 16px;margin-top:14px"><i></i>anonymous</span>
+    <div style="position:absolute;left:40px;right:40px;bottom:44px;display:flex;align-items:center;gap:20px"><span class="tg" style="width:112px;height:60px;border-radius:30px;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.2);position:relative"><span class="kn" style="position:absolute;left:5px;top:5px;width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:0 4px 10px rgba(0,0,0,.5)"></span></span><span style="font-size:32px;font-weight:600">Enable</span></div>`,'padding:40px'));
+  const warn=bigCard(R,140,740,1750-100,120,`<span style="color:#ffb454">${ic('alert',56)}</span><span style="font-size:36px">Use them only as a <b>last backup</b>. Anonymous: never send secrets.</span>`,'display:flex;align-items:center;gap:28px;padding:0 44px;border-color:rgba(255,180,84,.5);width:1680px');
+  return{el:R,upd(t){hd.upd(t);cs.forEach((c,i)=>{appear(c,t,e[i],.65,{y:50,ease:E.spring});const p=P(t,e[4+i],.35,E.spring);const tg=$('.tg',c);tg.style.background=p>.5?'linear-gradient(160deg,#f4f5f7,#aeb4be)':'rgba(255,255,255,.14)';$('.kn',c).style.left=(5+56*p)+'px'});appear(warn,t,e[8],.6,{y:30,s:.95})}}}
+
+/* --- 12: paste the key into Aqua --- */
+function scenePaste(){
+  const R=newScene(),e=EVP(12),hd=heading(R,'STEP 3','Paste it into <em>Aqua.</em>',e[0],80),cu=mkCursor(R);
+  const win=mk('div','g','',R);win.style.cssText+='left:300px;top:230px;width:1320px;height:690px;border-radius:44px;overflow:hidden';
+  win.innerHTML=`<div style="height:96px;display:flex;align-items:center;padding:0 36px;border-bottom:1.5px solid rgba(255,255,255,.1)"><img src="logo.png" style="width:52px;height:52px"><b style="font-size:34px;margin-left:16px">Aqua Code</b><span style="flex:1"></span>
+    <span id="ai" class="pill" style="font-size:26px;padding:10px 26px;gap:14px"><span class="dot" id="aid" style="width:13px;height:13px;background:#ff6b6b;box-shadow:0 0 14px #ff6b6b"></span><span id="ait">No AI connected</span>${ic('chev',24)}</span></div>
+    <div style="padding:120px 0 0;text-align:center"><div style="font-size:60px;font-weight:700">What should we build?</div><div style="font-size:30px;color:var(--mut);margin-top:12px">Starts on the cheapest model.</div></div>`;
+  const menu=mk('div','card','',R);menu.style.cssText+='left:1130px;top:352px;width:450px;height:300px;padding:14px;z-index:20;background:linear-gradient(145deg,#2b2f37,#171a1f)';
+  menu.innerHTML=['Gemini|Needs key','Groq|Needs key','Cerebras|Needs key','Mistral|Needs key'].map((r,i)=>`<div class="mr" style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:16px;font-size:30px"><span class="dot" style="background:#ff6b6b;box-shadow:none;width:12px;height:12px"></span><b style="flex:1">${r.split('|')[0]}</b><span style="font-size:22px;color:#ffb454">${r.split('|')[1]}</span></div>`).join('');
+  const modal=mk('div','card','',R);modal.style.cssText+='left:520px;top:300px;width:880px;height:520px;padding:40px 50px;z-index:30;background:linear-gradient(145deg,#30343c,#1a1d22)';
+  modal.innerHTML=`<div style="font-size:46px;font-weight:700;text-align:center">Connect your AI</div><div style="display:flex;gap:18px;margin-top:26px"><span class="pill" style="font-size:30px;padding:12px 30px;border-color:#cfd3da;background:rgba(207,211,218,.18)">Gemini <span class="chip" style="color:#6ee7a8;font-size:18px;padding:0 12px;margin-left:8px">Free tier</span></span><span class="pill" style="font-size:30px;padding:12px 30px">Groq</span><span class="pill" style="font-size:30px;padding:12px 30px">Mistral</span></div>
+    <div style="margin-top:30px;font-size:25px;color:var(--mut)">Gemini API key</div><div id="kf" class="mono" style="margin-top:8px;height:78px;border-radius:22px;background:rgba(0,0,0,.35);border:2px solid rgba(255,255,255,.16);display:flex;align-items:center;padding:0 26px;font-size:36px"></div>
+    <div id="cn" style="margin:34px 0 0 auto;width:250px;height:84px;border-radius:999px;background:linear-gradient(160deg,#f4f5f7,#cfd3da 60%,#8d929c);color:#14161a;display:flex;align-items:center;justify-content:center;gap:12px;font-size:36px;font-weight:700;box-shadow:inset 0 2px 0 rgba(255,255,255,.7)">${ic('check',38)}Connect</div>`;
+  const toast=mk('div','pill',`<span class="dot"></span>Connected to <b>Gemini</b> <span style="color:var(--mut);font-size:28px">answered in 4.6 s</span>`,R);toast.style.cssText+='position:absolute;left:560px;top:850px;z-index:40;font-size:34px;padding:16px 36px';
+  const ai=$('#ai',win),aid=$('#aid',win),ait=$('#ait',win),kf=$('#kf',modal),cn=$('#cn',modal),full='AIzaSyC3k••••••••••••••';
+  return{el:R,upd(t){hd.upd(t);appear(win,t,e[0],.8,{y:60,s:.94,ease:E.spring});
+    const mv=clamp((t-e[2]-.1)/.3)*(1-clamp((t-e[3]-.1)/.25));menu.style.opacity=mv;menu.style.transform=`translateY(${(1-mv)*-16}px) scale(${.96+.04*mv})`;
+    menu.querySelector('.mr').style.background=(t>e[3]-.5&&t<e[3]+.2)?'rgba(255,255,255,.14)':'transparent';
+    const mo=clamp((t-e[3]-.15)/.4)*(1-clamp((t-e[7]-.7)/.4));modal.style.opacity=mo;modal.style.transform=`translateY(${(1-mo)*30}px) scale(${.94+.06*mo})`;
+    kf.innerHTML=esc(full.slice(0,Math.floor(P(t,e[4],e[5]-e[4],E.lin)*full.length)))+((t>e[4]&&t<e[6]&&Math.floor(t*3)%2===0)?'<span style="display:inline-block;width:4px;height:44px;background:#fff;margin-left:4px"></span>':'');
+    cn.style.transform=`scale(${1-.07*Math.sin(P(t,e[6],.25)*Math.PI)})`;
+    const ok=t>e[7];aid.style.background=ok?'#6ee7a8':'#ff6b6b';aid.style.boxShadow=`0 0 14px ${ok?'#6ee7a8':'#ff6b6b'}`;ait.innerHTML=ok?'Talking with <b>Gemini</b>':'No AI connected';appear(toast,t,e[7],.6,{y:30,s:.9,ease:E.spring});toast.style.opacity=Math.min(parseFloat(toast.style.opacity),1-clamp((t-e[7]-2.4)*2));
+    drive(cu,t,[[e[1],1680,930],[e[2]-.03,1450,262],[e[3]-.03,1330,396],[e[6]-.03,1210,720]],[e[2],e[3],e[6]])}}}
+
+/* --- 13: Aqua checks it for you --- */
+function sceneCheck(){
+  const R=newScene(),e=EVP(13),hd=heading(R,'AUTOMATIC','Aqua <em>checks it</em> for you.',e[0],80);
+  const rows=['Key saved on this PC only','Model names checked','Connected: answered in 4.6 s'].map((r,i)=>bigCard(R,460,300+i*118,1000,96,`<span style="color:#6ee7a8">${ic('check',48)}</span><span style="font-size:36px;font-weight:600">${r}</span>`,'display:flex;align-items:center;gap:26px;padding:0 40px;border-radius:28px'));
+  const names=['Gemini','Groq','Cerebras','Mistral'];
+  const chain=mk('div','abs','',R);chain.style.cssText+='left:0;right:0;top:700px;display:flex;justify-content:center;align-items:center;gap:26px';
+  const ch=[];names.forEach((n,i)=>{const c=mk('div','pill',`<span class="dot"></span>${n}`,chain);ch.push(c);if(i<3)mk('span','',ic('arrow',44),chain).style.color='#9ea3ad'});
+  const cap=mk('div','abs','When a limit runs out, the next one takes over.',R);cap.style.cssText+='left:0;right:0;top:830px;text-align:center;font-size:44px;color:#e8eaee';
+  return{el:R,upd(t){hd.upd(t);rows.forEach((r,i)=>appear(r,t,e[i],.6,{y:30,x:-40,s:.96}));
+    ch.forEach((c,i)=>appear(c,t,e[3+i],.5,{y:24,s:.8,ease:E.spring}));const sw=P(t,e[7],.5,E.spring);
+    const d0=ch[0].querySelector('.dot'),d1=ch[1].querySelector('.dot');d0.style.background=t>e[7]?'#ff6b6b':'#6ee7a8';d0.style.boxShadow='0 0 18px '+(t>e[7]?'#ff6b6b':'#6ee7a8');
+    ch[1].style.boxShadow=`inset 1.5px 1.5px 0 rgba(255,255,255,.35),0 0 ${60*sw}px rgba(110,231,168,${.4*sw}),0 18px 40px -12px rgba(0,0,0,.6)`;ch[1].style.borderColor=`rgba(110,231,168,${.6*sw})`;appear(cap,t,e[7]-.2,.7,{y:20,s:.96})}}}
+
+/* --- 14: every feature (overview) --- */
+function sceneOverview(){
+  const R=newScene(),e=EVP(14),hd=heading(R,'THE TOUR','Every <em>feature.</em>',e[0],96);
+  const items=[['browser','Runs on your PC','Files and keys stay with you'],['coin','Cheapest model first','Strong models only when needed'],['bolt','26 AI providers','Switches by itself when one runs out'],['desktop','Live preview','See your site beside the chat'],['shield','You stay in control','Asks before edits and commands'],['refresh','No restarts','Changes apply live']];
+  const cards=items.map((it,i)=>bigCard(R,140+(i%3)*580,330+Math.floor(i/3)*310,540,270,`<div style="color:#e8eaee">${ic(it[0],64)}</div><div style="font-size:42px;font-weight:650;margin-top:22px">${it[1]}</div><div style="font-size:29px;color:var(--mut);margin-top:10px;line-height:1.3">${it[2]}</div>`,'padding:40px'));
+  return{el:R,upd(t){hd.upd(t);cards.forEach((c,i)=>appear(c,t,e[i],.65,{y:44,s:.9,ease:E.spring}))}}}
+
+/* --- 15: the agent's tools --- */
+function sceneTools(){
+  const R=newScene(),e=EVP(15),hd=heading(R,'FEATURE','The agent\'s <em>tools.</em>',e[0]);
+  const tools=[['folder','List files'],['file','Read files'],['edit','Write files'],['edit','Edit files'],['search','Search code'],['term','Run commands'],['browser','Start dev servers'],['bolt','Ask a stronger model']];
+  const ts=tools.map((x,i)=>bigCard(R,140+(i%4)*445,310+Math.floor(i/4)*200,410,170,`<span style="color:#e8eaee">${ic(x[0],62)}</span><span style="font-size:34px;font-weight:600;margin-top:12px">${x[1]}</span>`,'display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:30px'));
+  const ban=bigCard(R,140,740,1680,130,`<span style="color:#6ee7a8">${ic('shield',58)}</span><span style="font-size:38px">After every write, <b>Python and JSON are syntax-checked</b>. A mistake counts as a failing step.</span>`,'display:flex;align-items:center;gap:28px;padding:0 44px;border-color:rgba(110,231,168,.4);background:linear-gradient(145deg,rgba(110,231,168,.13),rgba(110,231,168,.03))');
+  return{el:R,upd(t){hd.upd(t);ts.forEach((c,i)=>appear(c,t,e[i],.5,{y:34,s:.88,ease:E.spring}));appear(ban,t,e[8],.6,{y:30,s:.95})}}}
+
+/* --- 16: escalation --- */
+function sceneEsc(){
+  const R=newScene(),e=EVP(16),hd=heading(R,'FEATURE','When it <em>escalates.</em>',e[0]),cu=mkCursor(R);
+  const tr=['2 failing steps in a row','8 steps without finishing','A rate limit is hit','The model asks for help'].map((x,i)=>bigCard(R,140,300+i*122,760,100,`<span style="color:#ff6b6b">${ic(i<2?'x':i==2?'alert':'bolt',46)}</span><span style="font-size:36px;font-weight:600">${x}</span>`,'display:flex;align-items:center;gap:24px;padding:0 38px;border-radius:28px'));
+  const comp=bigCard(R,980,320,800,380,`<div style="font-size:26px;color:var(--dim);letter-spacing:2px;margin-bottom:22px">PIN A TIER YOURSELF</div><div id="chips" style="display:flex;gap:14px"></div><div style="margin-top:50px;font-size:30px;color:var(--mut)">Or hand over to a stronger model right now:</div><div id="esc" style="margin-top:20px;display:inline-flex;align-items:center;gap:14px;padding:18px 36px;border-radius:999px;font-size:34px;font-weight:650;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.2)">${ic('bolt',38)}Escalate now</div>`,'padding:44px');
+  const chips=['Auto','Lite','Standard','Pro'].map((n,i)=>mk('div','pill',n,$('#chips',comp)));chips.forEach(c=>c.style.cssText+='font-size:32px;padding:12px 28px');
+  const escb=$('#esc',comp);
+  return{el:R,upd(t){hd.upd(t);tr.forEach((c,i)=>appear(c,t,e[1+i],.55,{y:30,x:-40,s:.96}));appear(comp,t,e[5],.7,{y:50,s:.93,ease:E.spring});
+    const sel=t>e[6]?3:0;chips.forEach((c,i)=>{c.style.background=i===sel?'linear-gradient(160deg,#f4f5f7,#aeb4be)':'';c.style.color=i===sel?'#14161a':'';c.style.borderColor=i===sel?'#fff':''});
+    const pe=P(t,e[8],.3);escb.style.transform=`scale(${1-.07*Math.sin(pe*Math.PI)})`;escb.style.background=t>e[8]?'linear-gradient(160deg,#f4f5f7,#aeb4be)':'rgba(255,255,255,.1)';escb.style.color=t>e[8]?'#14161a':'#fff';
+    drive(cu,t,[[e[5]+.1,1650,560],[e[6]-.02,1590,372],[e[7]+.2,1190,610],[e[8]-.02,1210,606]],[e[6],e[8]])}}}
+
+/* --- 17: credit panel --- */
+function sceneCredit(){
+  const R=newScene(),e=EVP(17),hd=heading(R,'FEATURE','Your credit, <em>always visible.</em>',e[0],80);
+  const win=mk('div','g','',R);win.style.cssText+='left:300px;top:260px;width:1320px;height:620px;border-radius:44px;overflow:hidden';
+  win.innerHTML=`<div style="position:absolute;left:60px;top:50px;width:440px"><div style="font-size:24px;letter-spacing:2px;color:var(--dim)">SPEND TODAY</div>
+    <div style="position:relative;width:300px;height:300px;margin:26px 0 0 40px"><svg viewBox="0 0 120 120" style="transform:rotate(-90deg);width:300px;height:300px"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="10"/><circle id="arc" cx="60" cy="60" r="52" fill="none" stroke="#cfd3da" stroke-width="10" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
+    <div style="position:absolute;inset:0;display:grid;place-content:center;text-align:center"><div id="amt" style="font-size:62px;font-weight:700">$0.00</div><div style="font-size:24px;color:var(--mut)">of $1.00 today</div></div></div>
+    <div style="margin-top:34px;font-size:24px;color:var(--mut);display:flex;justify-content:space-between"><span>Total budget</span><span id="tt">$0.00 / $10.00</span></div><div class="bar" style="position:relative;margin-top:10px;width:440px"><i id="tb" style="width:0%;background:#8fb8b2"></i></div></div>
+   <div style="position:absolute;left:600px;top:50px;right:60px"><div style="font-size:24px;letter-spacing:2px;color:var(--dim)">MODELS TODAY</div><div id="ml" style="margin-top:20px;display:flex;flex-direction:column;gap:18px"></div>
+   <div id="sv" style="margin-top:34px;display:flex;align-items:center;gap:20px;padding:22px 30px;border-radius:26px;background:rgba(110,231,168,.12);border:1.5px solid rgba(110,231,168,.4);color:#6ee7a8"><span>${ic('coin',56)}</span><span style="font-size:36px">Saved <b id="sva">$0.00</b> vs. always the top model</span></div></div>`;
+  const ml=$('#ml',win);const ms=[['Lite','gpt-oss-20b','412 / 1000','#8fb8b2',.41],['Standard','gemini-flash','38 / 250','#a79fc2',.15],['Pro','top model','4 / 100','#e8eaee',.04]].map(m=>{const d=mk('div','',`<div style="display:flex;align-items:center;gap:14px"><span style="width:16px;height:16px;border-radius:50%;background:${m[3]};box-shadow:0 0 14px ${m[3]}"></span><b style="font-size:32px">${m[0]}</b>${mono(m[1],24)}<span style="flex:1"></span><span style="font-size:26px;color:var(--mut)">${m[2]} requests</span></div><div class="bar" style="position:relative;margin-top:10px"><i style="width:0%;background:${m[3]}"></i></div>`,ml);d._w=m[4];return d});
+  const arc=$('#arc',win),amt=$('#amt',win),tb=$('#tb',win),tt=$('#tt',win),sva=$('#sva',win);
+  return{el:R,upd(t){hd.upd(t);appear(win,t,e[0],.8,{y:60,s:.93,ease:E.spring});const r=P(t,e[1],1.2,E.inout);arc.style.strokeDashoffset=326.7*(1-.12*r);amt.textContent=fmtM(.12*r);
+    const b=P(t,e[2],.9,E.inout);tb.style.width=(8*b)+'%';tt.textContent=fmtM(.84*b)+' / $10.00';
+    ms.forEach((d,i)=>{const p=P(t,e[3]+i*.18,.9,E.inout);d.querySelector('.bar i').style.width=(d._w*100*p)+'%';d.style.opacity=clamp((t-e[3]-i*.18)*3)});
+    const sv=P(t,e[4],e[5]-e[4],E.inout);sva.textContent=fmtM(.42*sv);$('#sv',win).style.opacity=clamp((t-e[4]+.3)*3)}}}
+
+/* --- 18: free mode and automatic switching --- */
+function sceneFailover(){
+  const R=newScene(),e=EVP(18),hd=heading(R,'FEATURE','Free mode and <em>auto-switch.</em>',e[0],80);
+  const free=mk('div','chip',`<i></i>Free tier  -  no charge  -  $0.00`,R);free.style.cssText+='position:absolute;left:146px;top:250px;color:#6ee7a8;font-size:32px;padding:8px 28px';
+  const names=['Gemini','Groq','Cerebras','Mistral'];
+  const chain=mk('div','abs','',R);chain.style.cssText+='left:0;right:0;top:360px;display:flex;justify-content:center;align-items:center;gap:30px';
+  const cs=[];names.forEach((n,i)=>{const c=mk('div','card',`<div style="display:flex;align-items:center;gap:14px"><span class="dot"></span><b style="font-size:40px">${n}</b></div><div class="bar" style="position:relative;margin-top:22px"><i style="width:${i?10:60}%;background:#6ee7a8"></i></div><div class="lb" style="margin-top:14px;font-size:24px;color:var(--mut)">${i?'plenty left':'free requests used'}</div>`,chain);c.style.cssText+='position:relative;width:360px;height:200px;padding:34px';cs.push(c);if(i<3)mk('span','',ic('arrow',44),chain).style.color='#9ea3ad'});
+  const lock=bigCard(R,140,660,1000,190,`<span class="lk" style="color:#ffb454">${ic('lock',70)}</span><div><div style="font-size:42px;font-weight:700">Paid providers stay blocked</div><div style="font-size:29px;color:var(--mut);margin-top:6px">so it never spends money by surprise</div></div>`,'display:flex;align-items:center;gap:34px;padding:0 46px;border-color:rgba(255,180,84,.45)');
+  const tg=bigCard(R,1180,660,600,190,`<div style="font-size:32px;font-weight:600;flex:1">Allow paid providers</div><span class="tg" style="width:112px;height:60px;border-radius:30px;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.2);position:relative"><span class="kn" style="position:absolute;left:5px;top:5px;width:46px;height:46px;border-radius:50%;background:#fff"></span></span>`,'display:flex;align-items:center;gap:24px;padding:0 46px');
+  return{el:R,upd(t){hd.upd(t);appear(free,t,e[0],.6,{y:20,s:.9});cs.forEach((c,i)=>appear(c,t,e[1+i],.6,{y:40,s:.9,ease:E.spring}));
+    const lim=t>e[4];const d0=cs[0].querySelector('.dot'),b0=cs[0].querySelector('.bar i');d0.style.background=lim?'#ff6b6b':'#6ee7a8';b0.style.width=(60+40*P(t,e[4]-.5,.5,E.inout))+'%';b0.style.background=lim?'#ff6b6b':'#6ee7a8';cs[0].querySelector('.lb').textContent=lim?'limit reached':'free requests used';cs[0].style.opacity=1-.4*P(t,e[4],.6);
+    const sw=P(t,e[5],.6,E.spring);cs[1].style.boxShadow=`inset 1.5px 1.5px 0 rgba(255,255,255,.3),0 0 ${70*sw}px rgba(110,231,168,${.35*sw}),0 26px 60px -20px rgba(0,0,0,.7)`;cs[1].style.borderColor=`rgba(110,231,168,${.6*sw})`;if(sw>.4)cs[1].querySelector('.lb').textContent='in use';
+    appear(lock,t,e[6],.6,{y:30,s:.94});appear(tg,t,e[6]+.15,.6,{y:30,s:.94});const on=P(t,e[7],.35,E.spring);const tgl=$('.tg',tg);tgl.style.background=on>.5?'linear-gradient(160deg,#f4f5f7,#aeb4be)':'rgba(255,255,255,.14)';$('.kn',tg).style.left=(5+56*on)+'px';
+    if(on>.5){$('.lk',lock).style.color='#6ee7a8';lock.style.borderColor='rgba(110,231,168,.45)'}}}}
+
+/* --- 19: approval modes --- */
+function sceneApproval(){
+  const R=newScene(),e=EVP(19),hd=heading(R,'FEATURE','You stay <em>in control.</em>',e[0]),cu=mkCursor(R);
+  const modes=bigCard(R,140,330,720,330,`<div style="font-size:24px;letter-spacing:2px;color:var(--dim);margin-bottom:18px">APPROVAL MODE</div><div id="ml"></div>`,'padding:36px 40px');
+  const mm=['Ask for every change','Auto edits, ask for commands','Full auto'].map((m,i)=>{const d=mk('div','',`<span class="rd" style="width:30px;height:30px;border-radius:50%;border:3px solid #9ea3ad;flex:none"></span><span style="font-size:32px">${m}</span>`,$('#ml',modes));d.style.cssText='display:flex;align-items:center;gap:20px;padding:16px 22px;border-radius:20px;margin-top:6px';return d});
+  const blk=mk('div','chip',`${ic('shield',30)} Dangerous commands are always blocked`,R);blk.style.cssText+='position:absolute;left:146px;top:730px;color:#ff8f8f;font-size:30px;padding:10px 28px';
+  const ap=bigCard(R,920,300,860,520,`<div style="display:flex;align-items:center;gap:16px;font-size:36px;font-weight:700"><span style="color:#ffb454">${ic('shield',50)}</span><span id="at">Approval needed: run a command</span></div>
+    <div class="mono" style="margin-top:28px;padding:26px 30px;border-radius:20px;background:rgba(0,0,0,.4);font-size:34px">PS&gt; python test.py</div>
+    <div id="res" style="margin-top:30px;font-size:34px;color:#6ee7a8;opacity:0;display:flex;align-items:center;gap:14px">${ic('check',44)}Allowed. Tests passed.</div>
+    <div id="bt" style="position:absolute;left:44px;bottom:46px;display:flex;gap:22px"><span id="al" style="width:260px;height:88px;border-radius:999px;background:linear-gradient(160deg,#f4f5f7,#cfd3da 60%,#8d929c);color:#14161a;display:flex;align-items:center;justify-content:center;gap:12px;font-size:36px;font-weight:700">${ic('check',38)}Allow</span><span style="width:240px;height:88px;border-radius:999px;border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;gap:12px;font-size:36px;font-weight:600">${ic('x',38)}Deny</span></div>`,'padding:44px;border-color:rgba(255,180,84,.5)');
+  const al=$('#al',ap),bt=$('#bt',ap),res=$('#res',ap),at=$('#at',ap);
+  return{el:R,upd(t){hd.upd(t);appear(modes,t,e[0],.7,{y:50,ease:E.spring});appear(ap,t,e[0]+.1,.7,{y:50,ease:E.spring});
+    const sel=t>e[4]?1:0;mm.forEach((d,i)=>{d.style.background=i===sel?'rgba(255,255,255,.12)':'transparent';d.querySelector('.rd').style.background=i===sel?'#e8eaee':'transparent'});appear(blk,t,e[4]+.1,.6,{y:20,s:.9});
+    al.style.transform=`scale(${1-.07*Math.sin(P(t,e[2],.25)*Math.PI)})`;const ok=t>e[2];bt.style.opacity=ok?Math.max(0,1-(t-e[2])*3):1;res.style.opacity=P(t,e[3],.4);at.textContent=ok?'Approved':'Approval needed: run a command';ap.style.borderColor=ok?'rgba(110,231,168,.5)':'rgba(255,180,84,.5)';
+    drive(cu,t,[[e[1],1700,900],[e[2]-.02,1075,727]],[e[2]])}}}
+
+/* --- 20: workspace, chats, settings --- */
+function sceneWork(){
+  const R=newScene(),e=EVP(20),hd=heading(R,'FEATURE','Your files, <em>your chats.</em>',e[0],80);
+  const tree=bigCard(R,140,300,480,540,`<div style="display:flex;align-items:center;gap:14px;font-size:28px;color:var(--mut);letter-spacing:1px"><span>${ic('folder',34)}</span>WORKSPACE</div><div id="tr" style="margin-top:24px;display:flex;flex-direction:column;gap:10px"></div>`,'padding:36px');
+  const tis=['index.html','app.js','test.js','README.md'].map(n=>{const d=mk('div','',`<span style="color:#9ea3ad">${ic('file',34)}</span><span style="font-size:32px">${n}</span>`,$('#tr',tree));d.style.cssText='display:flex;align-items:center;gap:16px;padding:12px 18px;border-radius:16px;background:rgba(255,255,255,.05)';return d});
+  const view=bigCard(R,660,300,600,540,`<div class="mono" style="font-size:25px;color:var(--mut)">app.js</div><div class="mono" style="margin-top:20px;font-size:28px;line-height:1.7;color:#e8eaee">function add(task){<br>&nbsp;&nbsp;todos.push(task);<br>&nbsp;&nbsp;render();<br>}<br><br>function render(){<br>&nbsp;&nbsp;list.innerHTML = '';<br>&nbsp;&nbsp;todos.forEach(draw);<br>}</div>`,'padding:36px');
+  const chats=bigCard(R,1300,300,480,250,`<div style="font-size:26px;color:var(--mut);letter-spacing:1px">CHATS</div><div style="margin-top:16px;font-size:30px;line-height:1.7">Build a todo app<br><span style="color:var(--mut)">Fix the login bug</span><br><span style="color:var(--mut)">Write tests</span></div>`,'padding:30px 36px');
+  const set=bigCard(R,1300,570,480,280,`<div style="font-size:26px;color:var(--mut);letter-spacing:1px">SETTINGS</div><div id="st" style="margin-top:14px;display:flex;flex-direction:column;gap:8px"></div>`,'padding:30px 36px');
+  const ss=['Models and prices','Budgets and limits','Workspace folder','Add any provider'].map((n,i)=>{const d=mk('div','',`<span style="color:#9ea3ad">${ic(i==3?'plus':'gear',30)}</span><span style="font-size:28px">${n}</span>`,$('#st',set));d.style.cssText='display:flex;align-items:center;gap:14px;padding:5px 12px;border-radius:14px';return d});
+  return{el:R,upd(t){hd.upd(t);appear(tree,t,e[0],.7,{y:50,ease:E.spring});tis.forEach((d,i)=>appear(d,t,e[1+i],.4,{y:14,x:-20,s:1}));appear(view,t,e[5],.7,{y:50,ease:E.spring});appear(chats,t,e[6],.7,{y:50,ease:E.spring});appear(set,t,e[7],.7,{y:50,ease:E.spring});
+    const h=P(t,e[8],.4);ss[3].style.background=`rgba(255,255,255,${.14*h})`}}}
+
+/* --- 21: look and app --- */
+function sceneLook(){
+  const R=newScene(),e=EVP(21),hd=heading(R,'FEATURE','Made to <em>feel good.</em>',e[0],86),cu=mkCursor(R);
+  const mini=mk('div','g','',R);mini.style.cssText+='left:140px;top:290px;width:780px;height:500px;border-radius:38px;overflow:hidden';
+  mini.innerHTML=`<div id="dk" style="position:absolute;inset:0;background:linear-gradient(145deg,#2a2e35,#14161a);color:#f2f3f5"></div><div id="lt" style="position:absolute;inset:0;background:linear-gradient(145deg,#ffffff,#dfe2e8);color:#16181d;opacity:0"></div>
+    <div style="position:absolute;left:36px;top:30px;right:36px;display:flex;align-items:center;gap:14px"><img src="logo.png" style="width:46px;height:46px"><b style="font-size:30px">Aqua Code</b><span style="flex:1"></span><span id="th" style="width:52px;height:52px;border-radius:50%;border:2px solid currentColor;display:grid;place-items:center;opacity:.8">${ic('sun',30)}</span></div>
+    <div style="position:absolute;right:50px;top:130px;padding:18px 28px;border-radius:26px 26px 8px 26px;background:rgba(150,150,160,.35);font-size:30px">Build me a todo app</div><div style="position:absolute;left:50px;top:230px;padding:18px 28px;border-radius:26px 26px 26px 8px;background:rgba(150,150,160,.22);font-size:30px">Done. It is ready.</div>
+    <div style="position:absolute;left:36px;right:36px;bottom:34px;height:84px;border-radius:30px;border:2px solid rgba(150,150,160,.5);display:flex;align-items:center;padding:0 28px;font-size:28px;opacity:.7">Describe what to build...</div>`;
+  const dk=$('#dk',mini),lt=$('#lt',mini),th=$('#th',mini);
+  const gq=bigCard(R,980,290,800,220,`<div style="font-size:24px;letter-spacing:2px;color:var(--dim)">GLASS QUALITY</div><div style="display:flex;gap:16px;margin-top:22px"><span class="pill" style="font-size:30px;padding:12px 30px;border-color:#cfd3da">Lite  -  fast</span><span class="pill" style="font-size:30px;padding:12px 30px">Full  -  refraction</span></div>`,'padding:32px 40px');
+  const gm=bigCard(R,980,540,800,250,`<div style="font-size:24px;letter-spacing:2px;color:var(--dim)">LIQUID BUTTONS</div><div style="position:absolute;left:0;right:0;top:80px;height:140px;filter:url(#goo2)"><span id="b1" style="position:absolute;left:300px;top:20px;width:100px;height:100px;border-radius:50%;background:#fff;opacity:.9"></span><span id="b2" style="position:absolute;left:400px;top:20px;width:100px;height:100px;border-radius:50%;background:#fff;opacity:.9"></span></div>`,'padding:32px 40px');
+  const bd=[['desktop','Its own desktop window'],['refresh','No restart needed'],['browser','Ready for GitHub']].map((b,i)=>{const p=mk('div','pill',`<span style="color:#e8eaee">${ic(b[0],42)}</span>${b[1]}`,R);p.style.cssText+=`position:absolute;left:${140+i*600}px;top:850px;font-size:34px;padding:18px 36px`;return p});
+  const b1=$('#b1',gm),b2=$('#b2',gm);
+  return{el:R,upd(t){hd.upd(t);appear(mini,t,e[0]-.1,.8,{y:60,ease:E.spring});const m=P(t,e[1]+.1,.7,E.inout);lt.style.opacity=m;dk.style.opacity=1-m;mini.style.color=m>.5?'#16181d':'#f2f3f5';th.innerHTML=ic(m>.5?'sun':'sun',30);
+    appear(gq,t,e[3]-.1,.7,{y:50,ease:E.spring});appear(gm,t,e[4]-.1,.7,{y:50,ease:E.spring});const mg=P(t,e[4]+.1,1.2,E.inout);const sep=210-mg*190;b1.style.left=(400-sep/2-100+50)+'px';b2.style.left=(400+sep/2-50+50)+'px';
+    bd.forEach((p,i)=>appear(p,t,e[4+1+i],.55,{y:26,s:.88,ease:E.spring}));
+    drive(cu,t,[[e[0]+.1,1600,880],[e[1]-.02,857,326]],[e[1]])}}}
+
+/* --- 22: honest notes --- */
+function sceneNotes(){
+  const R=newScene(),e=EVP(22),hd=heading(R,'GOOD TO KNOW','A few <em>honest notes.</em>',e[0],86);
+  const data=[['info','Free limits change','Check each provider\'s page for the current numbers.','#cfd3da'],['lock','Free prompts may train models','Never send secrets through a free tier.','#ffb454'],['arrow','Google says "not eligible"?','Use Groq, Cerebras or Mistral instead.','#6ee7a8']];
+  SVG.info='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>';
+  const cs=data.map((d,i)=>bigCard(R,140+i*580,330,540,420,`<div style="color:${d[3]}">${ic(d[0],76)}</div><div style="font-size:44px;font-weight:700;margin-top:26px;line-height:1.15">${d[1]}</div><div style="font-size:30px;color:var(--mut);margin-top:16px;line-height:1.3">${d[2]}</div>`,`padding:44px;border-color:${d[3]}66`));
+  return{el:R,upd(t){hd.upd(t);cs.forEach((c,i)=>appear(c,t,e[i],.7,{y:50,ease:E.spring}))}}}
+
+/* ======================= captions ======================= */
+const CAP=$('#cap');const caps=[];
+function buildCaps(){T.lines.forEach(L=>{const el=mk('div','capl','',CAP);const toks=L.text.split(/\s+/);el.innerHTML=toks.map(w=>`<span>${esc(w)}</span>`).join(' ');caps.push({L,el,sp:[...el.children],toks})})}
+function updCaps(t){caps.forEach(c=>{const{L}=c;const a=P(t,L.s-.25,.35,E.out)*(1-P(t,L.e+.25,.4,E.lin));c.el.style.opacity=a;c.el.style.transform=`translateY(${(1-a)*14}px)`;if(a<=0)return;
+  const n=c.toks.length,m=L.words.length;c.sp.forEach((sp,i)=>{const j=Math.min(m-1,Math.round(i*(m-1)/Math.max(1,n-1)));const w=L.words[j];const act=t>=w.s&&t<w.e+.05;const past=t>=w.e;sp.style.opacity=act?1:past?.86:.42;sp.style.color=act?'#fff':'#e4e6ea'})})}
+
+/* ======================= master ======================= */
+function build(){
+  const fns=[null,scene2,scene3,scene4,scene5,scene6,sceneKey1,sceneKey2,sceneGit,sceneGemini,sceneMore,sceneNoKey,scenePaste,sceneCheck,sceneOverview,sceneTools,sceneEsc,sceneCredit,sceneFailover,sceneApproval,sceneWork,sceneLook,sceneNotes,null];
+  SC=fns.map((f,i)=>f?{...f(),rng:T.scenes[i]}:{el:null,rng:T.scenes[i]});
+  initWater();buildCaps()}
+const sa=(t,[a,b])=>Math.min(E.inout(clamp((t-a)/.5)),E.inout(clamp((b-t)/.5)));
+window.seek=function(t){
+  updBg(t);
+  const w0=sa(t,T.scenes[0]),w1=sa(t,T.scenes[T.scenes.length-1]);const wa=Math.max(w0,w1);WC.style.opacity=wa;
+  if(wa>0.001)drawWater(t,w1>w0?1:0);
+  SC.forEach((s,i)=>{if(!s.el)return;const a=sa(t,s.rng);if(a<=0.001){s.el.style.display='none';return}s.el.style.display='block';
+    const prog=clamp((t-s.rng[0])/(s.rng[1]-s.rng[0]));s.el.style.opacity=a;s.el.style.filter=a<.999?`blur(${(1-a)*18}px)`:'none';
+    s.el.style.transform=`scale(${(1+.03*prog)*(1.045-.045*a)})`;s.upd(t)});
+  CAP.style.display='none';
+  return true};
+fetch('timeline.json').then(r=>r.json()).then(j=>{T=j;build();window.READY=true;window.seek(0)});
+</script>
+</body></html>

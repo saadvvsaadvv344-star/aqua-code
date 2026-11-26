@@ -1,0 +1,14 @@
+# local state: keys, usage, chats
+data/
+# the agent's working folder
+workspace/
+__pycache__/
+video/build/
+# the videos are big (GitHub rejects files over 100 MB): attach them to a Release instead
+video/*.mp4
+video/own_voice/
+*.pyc
+.env
+.venv/
+.DS_Store
+Thumbs.db

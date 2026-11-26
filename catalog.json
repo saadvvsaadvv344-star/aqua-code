@@ -1,0 +1,174 @@
+{
+  "_comment": "Extra AI providers. Edit this file and the app sees it immediately (no restart). All endpoints are OpenAI-compatible. Details come from the community 'awesome free LLM APIs' lists and are self-reported, so limits and model names can be out of date: Aqua checks real model names when you connect.",
+  "providers": {
+    "cohere": {
+      "label": "Cohere", "base": "https://api.cohere.ai/compatibility/v1", "group": "Free tiers",
+      "tiers": [
+        {"name": "Lite", "model": "command-r7b-12-2024", "rpm": 20},
+        {"name": "Pro", "model": "command-a-03-2025", "rpm": 20}
+      ],
+      "info": {"tag": "Free trial key", "c": "var(--green)", "sub": "Non-commercial use only.", "url": "https://dashboard.cohere.com/api-keys",
+        "steps": ["Create a Cohere account.", "Open API keys and copy the free Trial key.", "Paste it below."],
+        "note": "Listed as about 20 requests a minute and 1,000 calls a month, for non-commercial use."}
+    },
+    "zai": {
+      "label": "Z AI (GLM)", "base": "https://api.z.ai/api/paas/v4", "group": "Free tiers",
+      "tiers": [{"name": "Lite", "model": "glm-4.7-flash"}],
+      "info": {"tag": "Free models", "c": "var(--green)", "sub": "GLM flash models. No card.", "url": "https://z.ai/manage-apikey/apikey-list",
+        "steps": ["Create a Z AI account (overseas phone numbers are accepted).", "Open the API keys page and create a key.", "Paste it below."],
+        "note": "Free models allow about one request at a time."}
+    },
+    "github": {
+      "label": "GitHub Models", "base": "https://models.github.ai/inference", "group": "Free tiers",
+      "tiers": [
+        {"name": "Lite", "model": "openai/gpt-4.1-mini", "rpm": 15, "rpd": 150},
+        {"name": "Pro", "model": "openai/gpt-4.1", "rpm": 10, "rpd": 50}
+      ],
+      "info": {"tag": "Free, low limits", "c": "var(--green)", "sub": "Uses a GitHub token.", "url": "https://github.com/settings/personal-access-tokens",
+        "steps": ["Open GitHub token settings and create a fine-grained personal access token.", "Give it the Models permission (read).", "Paste the token below."],
+        "note": "Meant for prototyping, with low rate limits. If the model names fail, use Settings, Load the model list."}
+    },
+    "huggingface": {
+      "label": "Hugging Face", "base": "https://router.huggingface.co/v1", "group": "Free tiers",
+      "tiers": [
+        {"name": "Lite", "model": "openai/gpt-oss-20b"},
+        {"name": "Pro", "model": "openai/gpt-oss-120b"}
+      ],
+      "info": {"tag": "Small free credit", "c": "var(--amber)", "sub": "Monthly credit, then billing.", "url": "https://huggingface.co/settings/tokens",
+        "steps": ["Create a Hugging Face account.", "Create an access token with inference permission.", "Paste it below."],
+        "note": "Free accounts get only a small monthly credit; after that you need billing."}
+    },
+    "aion": {
+      "label": "Aion Labs", "base": "https://api.aionlabs.ai/v1", "group": "Free tiers",
+      "tiers": [
+        {"name": "Lite", "model": "aion-3.0-mini", "rpm": 15},
+        {"name": "Pro", "model": "aion-3.0", "rpm": 15}
+      ],
+      "info": {"tag": "Free, tiny", "c": "var(--amber)", "sub": "About 20K tokens a day.", "url": "https://aionlabs.ai",
+        "steps": ["Create an Aion Labs account.", "Create an API key in the dashboard.", "Paste it below."],
+        "note": "Listed as 15 requests a minute and 20K tokens a day, so it runs out quickly."}
+    },
+    "axforge": {
+      "label": "AxForge", "base": "https://api.axforge.ai/v1", "group": "Free tiers",
+      "tiers": [
+        {"name": "Lite", "model": "glm-5.3-flash"},
+        {"name": "Pro", "model": "qwen3.8-27b"}
+      ],
+      "info": {"tag": "Free tokens", "c": "var(--green)", "sub": "3M tokens per 30 days, EU hosted.", "url": "https://axforge.ai",
+        "steps": ["Create an AxForge account.", "Create an API key.", "Paste it below."],
+        "note": "The list says 3M tokens per 30 days, shared across models, and that prompts are not stored or used for training. That is the provider's own claim."}
+    },
+    "runcrate": {
+      "label": "Runcrate", "base": "https://api.runcrate.ai/v1", "group": "Free tiers",
+      "tiers": [
+        {"name": "Lite", "model": "DeepSeek-V4.1-Flash"},
+        {"name": "Pro", "model": "gpt-oss-120b"}
+      ],
+      "info": {"tag": "Free weekly", "c": "var(--green)", "sub": "Weekly allowance, resets Mondays.", "url": "https://runcrate.ai",
+        "steps": ["Sign up with a GitHub account (at least 30 days old, so no card is needed).", "Create an API key.", "Paste it below."],
+        "note": "Signing up with Google may ask for a card."}
+    },
+    "cloudflare": {
+      "label": "Cloudflare AI", "base": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1", "group": "Free tiers",
+      "tiers": [
+        {"name": "Lite", "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"},
+        {"name": "Pro", "model": "@cf/openai/gpt-oss-120b"}
+      ],
+      "info": {"tag": "Free daily", "c": "var(--green)", "sub": "10K neurons a day. Needs your account ID.", "url": "https://dash.cloudflare.com/profile/api-tokens",
+        "steps": ["Create a free Cloudflare account and copy your Account ID.", "Create an API token with the Workers AI permission.", "Paste the token below, then in Settings replace {account_id} in the endpoint with your Account ID."],
+        "note": "Some models need a paid plan."}
+    },
+    "requesty": {
+      "label": "Requesty", "base": "https://router.requesty.ai/v1", "group": "Community gateways (unverified)",
+      "tiers": [{"name": "Lite", "model": ""}],
+      "info": {"tag": "Gateway", "c": "var(--amber)", "sub": "Shared 200 requests a day.", "url": "https://requesty.ai",
+        "steps": ["Create a Requesty account and an API key.", "Paste it below.", "In Settings, Load the model list and pick a free model."],
+        "note": "Gateway run by a small operator. It sends your prompts to third parties, and some free models may keep prompts or train on them."}
+    },
+    "gonka": {
+      "label": "Gonka Broker", "base": "https://proxy.gonkabroker.com/v1", "group": "Community gateways (unverified)",
+      "tiers": [
+        {"name": "Lite", "model": "DeepSeek-V4-Flash"},
+        {"name": "Pro", "model": "MiniMax-M2.7"}
+      ],
+      "info": {"tag": "Gateway", "c": "var(--amber)", "sub": "About 1M tokens a month, shared.", "url": "https://proxy.gonkabroker.com",
+        "steps": ["Create an account (SMS verification with a non-VoIP number is required).", "Create an API key.", "Paste it below."],
+        "note": "Decentralized network and small operator. Treat prompts as public."}
+    },
+    "novai": {
+      "label": "NovAI", "base": "https://aiapi-pro.com/v1", "group": "Community gateways (unverified)",
+      "tiers": [{"name": "Lite", "model": ""}],
+      "info": {"tag": "Gateway", "c": "var(--amber)", "sub": "About 10 requests a day, shared.", "url": "https://aiapi-pro.com",
+        "steps": ["Create an account and an API key.", "Paste it below.", "In Settings, Load the model list and pick a model."],
+        "note": "Very small limits and a small operator. Treat prompts as public."}
+    },
+    "crowllm": {
+      "label": "CrowLLM", "base": "https://crowllm.com/v1", "group": "Community gateways (unverified)",
+      "tiers": [{"name": "Lite", "model": ""}],
+      "info": {"tag": "Gateway", "c": "var(--amber)", "sub": "Some :free models still bill.", "url": "https://crowllm.com",
+        "steps": ["Create an account and an API key.", "Paste it below.", "In Settings, Load the model list and pick a model."],
+        "note": "The list warns that a few ':free' model IDs actually bill a small rate. Check before using one."}
+    },
+    "synap": {
+      "label": "Synap", "base": "https://synap402.com/v1", "group": "Community gateways (unverified)",
+      "tiers": [{"name": "Lite", "model": ""}],
+      "info": {"tag": "Gateway", "c": "var(--amber)", "sub": "10 requests a day.", "url": "https://synap402.com",
+        "steps": ["Create an account and an API key.", "Paste it below.", "In Settings, Load the model list and pick a model."],
+        "note": "Small operator with tiny limits. Treat prompts as public."}
+    },
+    "cheapllm": {
+      "label": "cheapllm.shop", "base": "https://cheapllm.shop/v1", "group": "Community gateways (unverified)",
+      "tiers": [{"name": "Lite", "model": ""}],
+      "info": {"tag": "Gateway", "c": "var(--amber)", "sub": "Free during beta.", "url": "https://cheapllm.shop",
+        "steps": ["Create an account and an API key.", "Paste it below.", "In Settings, Load the model list and pick a model."],
+        "note": "Beta service from a small operator. It can change or end at any time."}
+    },
+    "airforce": {
+      "label": "Api.Airforce", "base": "https://api.airforce/v1", "group": "Community gateways (unverified)",
+      "tiers": [{"name": "Lite", "model": ""}],
+      "info": {"tag": "Gateway", "c": "var(--amber)", "sub": "Upstream models unclear.", "url": "https://api.airforce",
+        "steps": ["Create an account and an API key.", "Paste it below.", "In Settings, Load the model list and pick a model."],
+        "note": "It is not stated where the free models actually run. Treat prompts as public."}
+    },
+    "kilo": {
+      "label": "Kilo Code", "base": "https://api.kilo.ai/api/gateway", "group": "No key needed (anonymous)", "nokey": true,
+      "tiers": [
+        {"name": "Lite", "model": "kilo-auto/free", "rpm": 3},
+        {"name": "Pro", "model": "openrouter/free", "rpm": 3}
+      ],
+      "info": {"tag": "No key", "c": "var(--amber)", "sub": "About 200 requests an hour per IP.", "url": "",
+        "steps": ["Nothing to sign up for.", "Press Enable below."],
+        "note": "Anonymous. The auto router may use providers that log prompts, and NVIDIA models are logged. Do not send secrets."}
+    },
+    "llm7": {
+      "label": "LLM7.io", "base": "https://api.llm7.io/v1", "group": "No key needed (anonymous)", "nokey": true,
+      "tiers": [
+        {"name": "Lite", "model": "gpt-oss:20b"},
+        {"name": "Pro", "model": "codestral"}
+      ],
+      "info": {"tag": "No key", "c": "var(--amber)", "sub": "Free access is undocumented.", "url": "",
+        "steps": ["Nothing to sign up for.", "Press Enable below."],
+        "note": "The list says this free access may end without notice. Anonymous: do not send secrets."}
+    },
+    "ovh": {
+      "label": "OVHcloud AI", "base": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1", "group": "No key needed (anonymous)", "nokey": true,
+      "tiers": [
+        {"name": "Lite", "model": "gpt-oss-20b", "rpm": 2},
+        {"name": "Pro", "model": "gpt-oss-120b", "rpm": 2}
+      ],
+      "info": {"tag": "No key", "c": "var(--green)", "sub": "EU hosted. 2 requests a minute.", "url": "",
+        "steps": ["Nothing to sign up for.", "Press Enable below."],
+        "note": "Anonymous use is limited to about 2 requests a minute per IP, so it is slow but works as a last backup."}
+    },
+    "pollinations": {
+      "label": "Pollinations", "base": "https://gen.pollinations.ai/v1", "group": "No key needed (anonymous)", "nokey": true,
+      "tiers": [
+        {"name": "Lite", "model": "openai"},
+        {"name": "Pro", "model": "mistral"}
+      ],
+      "info": {"tag": "No key", "c": "var(--amber)", "sub": "Basic use needs no account.", "url": "",
+        "steps": ["Nothing to sign up for.", "Press Enable below."],
+        "note": "Anonymous. Do not send secrets. Tool support is not guaranteed."}
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "voice": "en-US-AndrewMultilingualNeural",
+  "rate": "-4%",
+  "lines": [
+    "Meet Aqua Code. Your own coding agent, running on your computer, with the AI that you choose.",
+    "Paste a free key from Gemini, Groq, Mistral, or any of twenty six providers. Your keys stay on your PC.",
+    "Then just say what you want. Aqua reads your files, writes the code, runs it, and fixes its own mistakes.",
+    "It always starts with the cheapest model. If that one struggles, a stronger one takes over, with the full conversation. So you save credit.",
+    "And when a model runs out, Aqua switches to the next AI by itself. Every answer tells you exactly which model is working.",
+    "Preview your site live, right next to the chat, in desktop, tablet, or phone size. The agent can even start dev servers for you.",
+    "Before the tutorial, what is an API key? It is like a password that lets Aqua talk to an AI service for you. You create it for free on the provider's website, and Aqua keeps it only on your PC.",
+    "Every provider gives its own key, and that is how your free limits are counted. Never share a key. If one leaks, delete it on the provider's site and make a new one.",
+    "Now the tutorial. How do you get free credit? Start with the GitHub list called awesome free LLM APIs. It collects providers with a permanent free tier.",
+    "Step one. Pick a provider. Gemini is the easiest. Open Google AI Studio, sign in, and click Create API key. No credit card is needed.",
+    "Step two. Do the same for Groq, Cerebras, Mistral, or OpenRouter. Each site has a keys page with a create button, and every key is one more backup.",
+    "Some providers need no key at all, like Kilo, LLM seven, OVH, and Pollinations. Just press Enable. They are anonymous, so use them only as a last backup.",
+    "Step three. Copy the key, open Aqua Code, press the AI button, pick the provider, paste the key, and press Connect.",
+    "Aqua tests the key and checks the model names for you. When one free limit runs out, it moves to the next key by itself.",
+    "Now, every feature. Aqua Code is free, runs on your own PC, and changes apply live, with no restart.",
+    "The agent can list, read, write and edit files, search your code, and run commands. After every write it checks Python and JSON for syntax errors.",
+    "It escalates when two steps fail in a row, after eight steps without finishing, on a rate limit, or when the model asks for help. You can also press Escalate now, or pin Lite, Standard, or Pro yourself.",
+    "The credit panel shows what you spent today, your daily and total budget, requests per minute and per day for every model, and how much you saved. Reach a budget, and Aqua stops.",
+    "Free mode counts cost as zero and respects every limit. When one is used up, Aqua tries other models, then the next connected AI. It only switches to paid providers if you allow it.",
+    "It always asks before it edits a file or runs a command. Choose to be asked every time, to auto approve edits, or full auto. Dangerous commands are blocked.",
+    "The agent works only inside your workspace folder, and you can browse its files. Every task is saved as a chat. In Settings you edit models, prices, budgets, and add any OpenAI compatible provider.",
+    "Dark and light themes, liquid glass buttons that melt together, and a faster mode for slower PCs. It opens as its own desktop app, and the whole project is ready for GitHub.",
+    "A few honest notes. Free limits change. Free prompts may be used to improve models, so never send secrets. And if Google says your project is not eligible, just use Groq, Cerebras, or Mistral.",
+    "That's Aqua Code. Free, fast, and yours. Made by Saad."
+  ]
+}
