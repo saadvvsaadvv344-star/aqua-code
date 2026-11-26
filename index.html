@@ -106,6 +106,8 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .si .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
 .si .c{font-size:11px;color:var(--dim)}
 .si .x{opacity:.5;color:var(--mut);padding:6px;margin:-4px -4px -4px 0;border-radius:8px}.si:hover .x{opacity:1}.si .x:hover{color:var(--red)}
+.projrow{display:flex;gap:6px;margin:6px 0 4px}.projrow select{flex:1;min-width:0;background:var(--field);border:1px solid var(--gb2);border-radius:12px;padding:7px 10px;color:var(--tx);font:inherit;font-size:12.5px;outline:0}
+.projnew{display:flex;gap:6px;margin:4px 0 6px}.projnew[hidden]{display:none}.projnew input{flex:1;min-width:0;background:var(--field);border:1px solid var(--gb2);border-radius:12px;padding:7px 10px;color:var(--tx);font:inherit;font-size:12.5px;outline:0}
 .si .x.arm{opacity:1;background:var(--red);color:#fff;padding:3px 9px;font-size:11px;font-weight:700;margin:0}
 .run-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);animation:pulse 1.2s infinite}
 @keyframes pulse{50%{opacity:.35}}
@@ -541,6 +543,8 @@ void main(){
     <div class="side-sec"><button class="btn gold" id="newChat" style="justify-content:center"><svg class="i"><use href="#i-plus"/></svg>New task</button></div>
     <div class="side-sec" style="flex:1"><div class="lbl">Tasks <button class="btn ic" id="clearAll" title="Delete all old tasks of this project" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-trash"/></svg></button></div><div class="sess" id="sess"></div></div>
     <div class="side-sec"><div class="lbl">Workspace <button class="btn ic" id="notesBtn" title="Project notes: what every AI did" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-file"/></svg></button><button class="btn ic" id="reftree" title="Refresh" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-refresh"/></svg></button></div>
+      <div class="projrow"><select id="projSel" title="Each project is a separate folder with its own chats and notes. The AI never sees other projects."></select><button class="btn ic" id="projNew" title="Start a new, empty project" style="padding:6px">+</button></div>
+      <div class="projnew" id="projNewBox" hidden><input id="projName" placeholder="Name of the new project" maxlength="40"><button class="btn gold" id="projCreate" style="padding:6px 12px">Create</button></div>
       <div class="ws" id="wspath">-</div><div class="tree" id="tree"></div><div class="mut" style="font-size:11px;text-align:center;padding:4px 0 2px;letter-spacing:.4px">Made by Saad</div></div>
   </aside>
 
@@ -875,7 +879,17 @@ function renderLevel(){
   tr.addEventListener('pointerup',end);tr.addEventListener('pointercancel',end);
 }
 function render(){renderLevel();renderHead();renderSide();renderChips();renderRight();$('#wspath').textContent=S.cfg.workspace}
-async function loadState(){const d=await api('/api/state');if(d.error)return;S.cfg=d.config;S.usage=d.usage;S.sessions=d.sessions;S.budget=d.budget;S.previewPort=d.preview_port;S.cores=d.cores;S.coreCap=d.core_cap;render()}
+/* ---------- projects: every project is its own folder, chats and notes ---------- */
+async function loadProjects(){
+  const d=await api('/api/projects');const sel=$('#projSel');if(!sel||!d.projects)return;
+  sel.innerHTML=d.projects.map(p=>`<option value="${esc(p.path)}" ${p.current?'selected':''}>${esc(p.name)} (${p.files} item${p.files===1?'':'s'})</option>`).join('');
+  sel.onchange=async()=>{const r=await api('/api/project/switch',{path:sel.value});if(r.error){toast(r.error);loadProjects();return}afterProjectChange(r,'Switched project: the AI only sees this project, not your other ones')};
+}
+function afterProjectChange(r,msg){S.cfg=r.config;S.usage=r.usage;S.runId=null;newChat();loadState();loadTree();loadProjects();toast(msg)}
+$('#projNew').onclick=()=>{const b=$('#projNewBox');b.hidden=!b.hidden;if(!b.hidden)$('#projName').focus()};
+$('#projCreate').onclick=async()=>{const n=$('#projName').value.trim();if(!n){toast('Type a name for the project');return}const r=await api('/api/project/new',{name:n});if(r.error){toast(r.error);return}$('#projName').value='';$('#projNewBox').hidden=true;afterProjectChange(r,'New empty project created. The AI starts fresh, with no data from your other projects')};
+$('#projName').addEventListener('keydown',e=>{if(e.key==='Enter')$('#projCreate').click()});
+async function loadState(){const d=await api('/api/state');if(d.error)return;S.cfg=d.config;S.usage=d.usage;S.sessions=d.sessions;S.budget=d.budget;S.previewPort=d.preview_port;S.cores=d.cores;S.coreCap=d.core_cap;render();loadProjects()}
 
 /* ---------- file tree ---------- */
 let tt=null;function refreshTreeSoon(){clearTimeout(tt);tt=setTimeout(loadTree,500)}

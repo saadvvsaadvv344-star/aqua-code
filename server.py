@@ -208,9 +208,16 @@ def apply_config_update(new):
 
 def _apply_config_update(new):
     cfg = load_cfg()
+    old_ws = cfg.get("workspace")
     for k in ("provider", "workspace", "approval"):
         if isinstance(new.get(k), str) and new[k].strip():
             cfg[k] = new[k].strip()
+    if cfg.get("workspace") != old_ws:                       # remember every project folder so you can switch back to it
+        kn = [p for p in (cfg.get("known_workspaces") or []) if isinstance(p, str)]
+        for p in (old_ws, cfg.get("workspace")):
+            if p and p not in kn:
+                kn.append(p)
+        cfg["known_workspaces"] = kn[-30:]
     if new.get("level") in ("low", "balanced", "high"):
         cfg["level"] = new["level"]
     for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback"):
@@ -772,12 +779,41 @@ def tool_search(ws, a):
     return "\n".join(hits) or "No matches."
 
 
+def outside_project_paths(cmd, ws):
+    """paths in a shell command that point into the user's other folders (other projects, Aqua's own data and API keys). Each project is separate."""
+    import tempfile
+    home = os.path.realpath(os.path.expanduser("~"))
+    w = os.path.realpath(ws)
+    free = [os.path.realpath(tempfile.gettempdir())] + [os.path.realpath(os.environ[k]) for k in ("LOCALAPPDATA", "APPDATA") if os.environ.get(k)]
+    bad = []
+    for tok in re.findall(r"[^\s\"'|;&<>(),=]+", cmd):
+        if "://" in tok or not re.search(r"[\\/]|^~|^\.\.$|^[A-Za-z]:", tok):
+            continue
+        t = tok.replace("$env:USERPROFILE", home).replace("%USERPROFILE%", home).replace("$HOME", home)
+        if t.startswith("~"):
+            t = home + t[1:]
+        if t.startswith("$"):
+            continue
+        try:
+            p = os.path.realpath(os.path.join(w, t))
+        except Exception:
+            continue
+        inside_home = p == home or p.startswith(home + os.sep)
+        in_ws = p == w or p.startswith(w + os.sep)
+        if inside_home and not in_ws and not any(p == f or p.startswith(f + os.sep) for f in free):
+            bad.append(tok)
+    return bad
+
+
 def tool_run_command(ws, a):
     cmd = a.get("command") or ""
     if not cmd.strip():
         raise ToolErr("Empty command")
     if DENY.search(cmd):
         raise ToolErr("Blocked: this command is not allowed for safety.")
+    out_of = outside_project_paths(cmd, ws)
+    if out_of:
+        raise ToolErr("Blocked: this command touches files outside this project folder (%s). Each project is separate: work only inside the workspace folder, and never read other projects or Aqua's own data." % ", ".join(out_of[:3]))
     timeout = max(5, min(300, int(a.get("timeout") or 60)))
     argv = ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd] if os.name == "nt" else ["bash", "-lc", cmd]
     try:
@@ -894,6 +930,8 @@ def system_prompt(ws, extra=""):
             "failing, call request_stronger_model with a reason instead of guessing. Other AIs may work on this project after you "
             "(the user switches models and providers), so when the work is complete call add_note once with 1-3 short lines "
             "(what you did, what is left, anything the next AI must know), then answer with a brief summary and no tool call. "
+            "SEPARATION: this folder is one project. If its existing files clearly belong to a DIFFERENT project than what the user now asks for (for example a PC-builder app when they ask for a cat game), "
+            "do NOT read, reuse or overwrite them: tell the user to click the + next to Project in the sidebar to start a new empty project, then stop. Never try to open folders outside the workspace; they belong to other projects. "
             "SEEING: for anything with a screen (web pages, games, UIs) you can really look at it: after you build it, and before and after you fix a visual or runtime bug, "
             "call look_page (screenshot if your model sees images, plus browser console errors and visible text). Fix every console error and visible problem, then look again, at most 3 rounds. "
             "DEBUGGING: when the user says something is blank, black, broken or 'does not work', do NOT guess. FIRST call look_page and read the console errors: the first error is almost always the cause "
@@ -912,6 +950,43 @@ def system_prompt(ws, extra=""):
         base += ("\n\n--- PROJECT NOTES (written by earlier AIs and by Aqua; they tell you what already happened, so trust them "
                  "and do not redo finished work) ---\n" + notes + "\n--- END OF NOTES ---")
     return base
+
+
+PROJECTS_ROOT = os.path.join(ROOT, "projects")
+
+
+def list_projects():
+    cur = load_cfg()["workspace"]
+    items = {}
+
+    def add(p):
+        try:
+            rp = os.path.normcase(os.path.realpath(p))
+            if rp in items or not os.path.isdir(p):
+                return
+            n = sum(1 for e in os.scandir(p) if not e.name.startswith("."))
+            items[rp] = {"name": os.path.basename(p.rstrip("\\/")) or p, "path": p, "files": n, "current": rp == ws_key(cur)}
+        except OSError:
+            pass
+    add(cur)
+    add(os.path.join(ROOT, "workspace"))
+    for kp in load_cfg().get("known_workspaces") or []:
+        add(kp)
+    if os.path.isdir(PROJECTS_ROOT):
+        for d in sorted(os.listdir(PROJECTS_ROOT), key=str.lower):
+            add(os.path.join(PROJECTS_ROOT, d))
+    return list(items.values())
+
+
+def new_project(name):
+    nm = re.sub(r"[^\w\- ]+", "", str(name or "")).strip()[:40] or "project"
+    os.makedirs(PROJECTS_ROOT, exist_ok=True)
+    p, i = os.path.join(PROJECTS_ROOT, nm), 2
+    while os.path.exists(p):
+        p = os.path.join(PROJECTS_ROOT, "%s %d" % (nm, i))
+        i += 1
+    os.makedirs(p)
+    return p
 
 
 def ws_key(ws):
@@ -2274,6 +2349,8 @@ class H(BaseHTTPRequestHandler):
                     return self._send(404, {"error": "not found"})
                 with open(fp, "rb") as f:
                     return self._send(200, f.read(), ct)
+            if u.path == "/api/projects":
+                return self._send(200, {"projects": list_projects()})
             if u.path == "/api/notes":
                 return self._send(200, {"notes": read_notes(load_cfg()["workspace"], 60000), "path": notes_path(load_cfg()["workspace"])})
             if u.path == "/api/servers":
@@ -2431,6 +2508,19 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, test_connection(b.get("provider"), int(b.get("tier") or 0)))
             if u.path == "/api/balance":
                 return self._send(200, fetch_balance(b.get("provider") or load_cfg()["provider"]))
+            if u.path == "/api/project/new":
+                if runs and any(not r.done for r in runs.values()):
+                    return self._send(409, {"error": "Wait for the running task to finish (or press Stop) before changing project."})
+                cfg = apply_config_update({"workspace": new_project(b.get("name"))})
+                return self._send(200, {"config": masked_cfg(cfg), "usage": usage_snapshot(cfg), "projects": list_projects()})
+            if u.path == "/api/project/switch":
+                if any(not r.done for r in runs.values()):
+                    return self._send(409, {"error": "Wait for the running task to finish (or press Stop) before changing project."})
+                tgt = str(b.get("path") or "")
+                if not any(os.path.normcase(os.path.realpath(x["path"])) == os.path.normcase(os.path.realpath(tgt)) for x in list_projects()):
+                    return self._send(400, {"error": "Unknown project"})
+                cfg = apply_config_update({"workspace": tgt})
+                return self._send(200, {"config": masked_cfg(cfg), "usage": usage_snapshot(cfg), "projects": list_projects()})
             if u.path == "/api/session/delete":
                 with _lock:
                     if b.get("all"):

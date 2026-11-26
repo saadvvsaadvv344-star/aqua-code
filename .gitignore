@@ -13,3 +13,5 @@ video/own_voice/
 .venv/
 .DS_Store
 Thumbs.db
+# your projects (each project is its own folder, never uploaded)
+projects/
