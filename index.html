@@ -1066,9 +1066,14 @@ const PINFO={
   note:'Meant for prototyping. NVIDIA may log prompts and use them to improve its products, so avoid secrets.'}};
 function openWelcome(prefer){
   let pick=prefer||S.cfg.provider;const w=$('#welcome'),box=$('#wbox');
+  /* the window can always be closed: X button, Escape, or a click on the dark area around it */
+  const closeW=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
+  if(window._wKey)document.removeEventListener('keydown',window._wKey);
+  window._wKey=e=>{if(e.key==='Escape'&&w.classList.contains('show'))closeW()};document.addEventListener('keydown',window._wKey);
+  w.onclick=e=>{if(e.target===w)closeW()};
   const draw=(msg,bad,showSkip)=>{
     const inf=S.cfg.providers[pick].info||PINFO[pick]||{tag:'Custom',sub:'Your own endpoint.',url:'',steps:['Get an API key from the service.','Paste it below, then pick the model names in Settings.'],note:'Custom providers use an OpenAI-compatible endpoint. Add the model names in Settings, Provider and models.'};
-    box.innerHTML=`<div style="padding:26px 30px 4px;text-align:center"><div class="logo" style="width:60px;height:60px;margin:0 auto 12px"><svg class="i"><use href="#i-logo"/></svg></div>
+    box.innerHTML=`<div style="padding:26px 30px 4px;text-align:center;position:relative"><button class="btn pill ic" id="w_x" title="Close" aria-label="Close" style="position:absolute;right:18px;top:18px">${ic('x')}</button><div class="logo" style="width:60px;height:60px;margin:0 auto 12px"><svg class="i"><use href="#i-logo"/></svg></div>
       <h2 style="font-size:24px;letter-spacing:-.3px">Connect your AI</h2><p class="mut" style="margin-top:6px">Choose a provider and paste a key. It is saved on this PC only, and you can change it any time in Settings.</p></div>
       <div class="modal-b" style="padding-top:12px"><div class="g3">${Object.entries(S.cfg.providers).map(([k,v])=>{const p=v.info||PINFO[k]||{tag:'Custom',sub:'Your own endpoint'};return `<button class="wp ${k===pick?'on':''}" data-p="${k}"><b>${esc(v.label)}</b><span class="chip" style="color:${p.c||'var(--mut)'};align-self:flex-start;margin:2px 0"><i></i>${esc(p.tag||'')}</span><small>${esc(p.sub||'')}</small></button>`}).join('')}</div>
       <div class="guide"><b>How to get your ${esc(S.cfg.providers[pick].label)} key</b><ol>${inf.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><button class="btn ghost" id="w_open">${ic('arrow')}Open the key page</button><p>${esc(inf.note||'')}</p></div>
@@ -1097,6 +1102,7 @@ function openWelcome(prefer){
       if(t.ok){w.classList.remove('show');toast('Connected to '+S.cfg.providers[pick].label);S.forced='auto';render();if(!S.sid)showHero()}
       else draw((t.error||'Could not connect.')+' The key was saved; check it or continue anyway.',true,true);
     };
+    const wx=$('#w_x');if(wx)wx.onclick=closeW;
     $('#w_go').onclick=go;const wk=$('#w_key');if(wk)wk.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
     const sk=$('#w_skip');if(sk)sk.onclick=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
     const nk=$('#w_nokey');if(nk)nk.onclick=async()=>{nk.classList.add('busy');const r=await api('/api/nokey/enable',{});nk.classList.remove('busy');if(!r.config){draw(r.error||'No anonymous model is available right now.',true);return}S.cfg=r.config;w.classList.remove('show');toast('Using '+S.cfg.providers[S.cfg.provider].label+' without a key. Slow, and prompts are public.');S.forced='auto';render();if(!S.sid)showHero()};
