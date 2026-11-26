@@ -1120,6 +1120,7 @@ function keyWin(onClose){
   if(window._wKey)document.removeEventListener('keydown',window._wKey);
   window._wKey=e=>{if(e.key==='Escape'&&w.classList.contains('show'))closeW()};document.addEventListener('keydown',window._wKey);
   w.onclick=e=>{if(e.target===w)closeW()};
+  w.classList.add('show');
   return{w,box,closeW};
 }
 const copyText=async(t)=>{try{await navigator.clipboard.writeText(t);toast('Copied')}catch(e){toast('Select the text and press Ctrl+C')}};
