@@ -1951,7 +1951,7 @@ def auto_pick_ids(rows):
 # Which service a pasted key belongs to. Keys that have no recognisable prefix can be written as  name: key
 KEY_PREFIXES = [("sk-or-", "openrouter"), ("AIza", "gemini"), ("gsk_", "groq"), ("csk-", "cerebras"), ("nvapi-", "nvidia"),
                 ("hf_", "huggingface"), ("github_pat_", "github"), ("ghp_", "github"), ("fw_", "fireworks"),
-                ("cfut_", "cloudflare"), ("cfat_", "cloudflare"), ("AQ.", "gemini"), ("rc_", "runcrate")]
+                ("cfut_", "cloudflare"), ("cfat_", "cloudflare"), ("AQ.", "gemini"), ("rc_", "runcrate"), ("gnk-", "gonka")]
 # keys whose shape (not start) tells the service
 KEY_SHAPES = [(re.compile(r"^[0-9a-f]{32}\.[A-Za-z0-9]{8,24}$"), "zai")]
 HUB_PRESETS = {"together": ("Together AI", "https://api.together.xyz/v1"), "fireworks": ("Fireworks AI", "https://api.fireworks.ai/inference/v1"),
