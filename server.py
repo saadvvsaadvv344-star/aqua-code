@@ -114,8 +114,8 @@ DEFAULT_CONFIG = {
         "nvidia": {
             "label": "NVIDIA NIM", "base": "https://integrate.api.nvidia.com/v1", "key": "", "free": True,
             "tiers": [
-                {"name": "Lite", "model": "meta/llama-3.3-70b-instruct", "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 30, "rpd": 0},
-                {"name": "Pro", "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1", "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 30, "rpd": 0},
+                {"name": "Lite", "model": "nvidia/nemotron-3.5-lightning-30b-a3b", "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 30, "rpd": 0},
+                {"name": "Pro", "model": "nvidia/nemotron-3-ultra-550b-a55b", "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 30, "rpd": 0},
             ],
         },
     },
@@ -2125,6 +2125,7 @@ def connect_key(kind, ident, key):
     service lists its models. A wrong key never replaces a working one. Never returns or logs the key."""
     try:
         key = clean_key(key)
+        hint = KEY_HINTS.get(ident, "")
         if kind == "hub":
             label, base = HUB_PRESETS[ident]
             m = multikey_models(base, key)
@@ -2133,8 +2134,23 @@ def connect_key(kind, ident, key):
             picks = auto_pick_ids(m["models"])
             if not picks:
                 return {"service": label, "ok": False, "detail": "No chat model found for this key."}
+            before = {k: copy.deepcopy(v) for k, v in load_cfg()["providers"].items() if str(v.get("base", "")).rstrip("/").lower() == base.rstrip("/").lower()}
             pid = multikey_save(label, base, key, picks, all(r["free"] for r in m["models"] if r["id"] in picks))
-            restore = lambda: None
+
+            def restore():                                    # a service that lists its models for anyone must not keep a key that does not work
+                with _lock:
+                    c3 = load_cfg()
+                    if pid in before:
+                        c3["providers"][pid] = before[pid]
+                    else:
+                        c3["providers"].pop(pid, None)
+                        if c3.get("provider") == pid:
+                            c3["provider"] = next((k for k, v in c3["providers"].items() if has_access(v)), "gemini")
+                    save_cfg(c3)
+
+            def rejected(err):
+                restore()
+                return {"service": label, "ok": False, "detail": "The service rejected this key (%s). Nothing was changed." % str(err)[:160]}
         else:
             pid = ident
             hint = KEY_HINTS.get(pid, "")
@@ -2206,7 +2222,7 @@ def connect_key(kind, ident, key):
         # the first model may simply not exist for this account: try other models of the same key before giving up
         tried = {load_cfg()["providers"][pid]["tiers"][0].get("model")}
         for _ in range(7):
-            if t.get("ok") or not re.search(r"HTTP (400|404|422)", str(t.get("error", ""))) or KEY_BAD_RX.search(str(t.get("error", ""))):
+            if t.get("ok") or not re.search(r"HTTP (400|404|410|422)", str(t.get("error", ""))) or KEY_BAD_RX.search(str(t.get("error", ""))):
                 break
             r = list_models(pid)
             alts = [i for i in auto_pick_ids(r.get("ids") or []) if i not in tried] if r.get("ok") else []
@@ -2239,8 +2255,11 @@ def connect_key(kind, ident, key):
         if t.get("ok"):
             return {"service": label, "id": pid, "ok": True, "detail": "%d model%s in the ladder, first one answered in %d ms" % (n, "" if n == 1 else "s", t.get("ms", 0))}
         err = str(t.get("error", "unknown error"))
-        if kind != "hub" and (re.search(r"HTTP 40[13]", err) or KEY_BAD_RX.search(err)):
+        if re.search(r"HTTP 40[13]", err) or KEY_BAD_RX.search(err) or err.strip() in ("Unauthorized", "Forbidden"):
             return rejected(err)
+        if re.search(r"Expecting value|Extra data|Request failed: ", err):      # the address answered, but not like an AI service
+            restore()
+            return {"service": label, "ok": False, "detail": "%s answered, but not like an AI service (the address in Aqua may be out of date, so the key could not be checked). Nothing was saved. Check the service's own API page for its current address. %s" % (label, hint)}
         if re.search(r"HTTP 429", err):
             return {"service": label, "id": pid, "ok": True, "detail": "The key works. The service is rate limiting right now, so Aqua will wait or switch automatically."}
         if re.search(r"HTTP 402", err):                      # the key is real, but the account may not use it without credit or a card: do not keep a key that cannot work

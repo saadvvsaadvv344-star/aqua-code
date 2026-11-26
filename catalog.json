@@ -81,7 +81,7 @@
           "Give it the Models permission (read).",
           "Paste the token below."
         ],
-        "note": "Meant for prototyping, with low rate limits. If the model names fail, use Settings, Load the model list."
+        "note": "UNCONFIRMED: in November 2026 the address models.github.ai/inference answered a test request with a plain 'OK' and not with an AI reply, so Aqua may not be able to use GitHub Models. If the test says it did not answer like an AI service, skip it."
       }
     },
     "huggingface": {
@@ -249,7 +249,11 @@
       "tiers": [
         {
           "name": "Lite",
-          "model": ""
+          "model": "Qwen/Qwen3.5-27B"
+        },
+        {
+          "name": "Pro",
+          "model": "Qwen/Qwen3.5-35B-A3B"
         }
       ],
       "info": {
@@ -272,7 +276,11 @@
       "tiers": [
         {
           "name": "Lite",
-          "model": ""
+          "model": "XingChenAGI/Xing4.0-29B"
+        },
+        {
+          "name": "Pro",
+          "model": "tencent/Hunyuan-MT-7B"
         }
       ],
       "info": {
