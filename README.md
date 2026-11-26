@@ -2,6 +2,8 @@
 
 # Aqua Code
 
+<video src="https://github.com/saadvvsaadvv344-star/aqua-code/raw/main/video/aqua-code-explainer-github.mp4" controls muted playsinline width="100%"></video>
+
 **Your own coding agent. Bring your DeepSeek or Gemini key, start cheap, escalate only when needed.**
 
 Aqua Code is a local, single-file-server coding agent with a liquid-glass interface. It reads and edits files in a workspace folder, runs commands, and shows you exactly what it costs. Made by Saad.
