@@ -2804,6 +2804,32 @@ def tool_download_3d(ws, a):
     return "Downloaded %s (%.1f MB) to models/%s. Call show_3d to look at it. Tell the user the source and that its licence must be checked before reuse." % (name, len(data) / 1e6, name)
 
 
+def open_in_chrome(url):
+    """Open a page in Google Chrome (where the user is signed in to Google); falls back to the default browser."""
+    url = str(url or "").strip()
+    if not re.match(r"^https://[A-Za-z0-9.-]+(/[^\s]*)?$", url):
+        return {"ok": False, "error": "Only plain https addresses can be opened."}
+    exe = None
+    if sys.platform.startswith("win"):
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("LOCALAPPDATA")):
+            c = os.path.join(base or "", "Google", "Chrome", "Application", "chrome.exe")
+            if base and os.path.isfile(c):
+                exe = c
+                break
+    elif sys.platform == "darwin":
+        if os.path.isdir("/Applications/Google Chrome.app"):
+            subprocess.Popen(["open", "-a", "Google Chrome", url])
+            return {"ok": True, "browser": "chrome"}
+    else:
+        exe = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium")
+    if exe:
+        subprocess.Popen([exe, url])                  # list arguments, no shell: the address cannot run anything
+        return {"ok": True, "browser": "chrome"}
+    import webbrowser
+    webbrowser.open(url)
+    return {"ok": True, "browser": "default"}
+
+
 # --------------------------------------------------------------------------- gateway: ONE key for all of your own keys
 def gateway_key(cfg=None):
     cfg = cfg or load_cfg()
@@ -3151,6 +3177,10 @@ class H(BaseHTTPRequestHandler):
         try:
             if u.path == "/v1/chat/completions":
                 return self._gateway_chat(b)
+            if u.path == "/api/open-url":
+                if self.headers.get("X-Aqua-UI") != "1":           # a web page cannot send this header without our permission
+                    return self._send(403, {"ok": False, "error": "Not allowed."})
+                return self._send(200, open_in_chrome(b.get("url")))
             if u.path == "/api/gateway":
                 act = b.get("action")
                 if act in ("rotate", "toggle"):
