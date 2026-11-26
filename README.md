@@ -102,6 +102,10 @@ The **Preview** button opens a live pane next to the chat (drag its edge to resi
 Aqua keeps a shared notebook for each project at `.aqua/NOTES.md` inside your workspace (open it with the file button in the sidebar). After each task Aqua adds an automatic log (the request, which AI did it, files changed, commands run, problems, outcome), every AI can also save its own note with the `add_note` tool (what it did, what is left), and every switch between models or providers is logged. The latest notes are put in front of **every** AI on every call, so when Gemini runs out and Groq takes over, or you start a new chat, the next AI already knows what happened. You can read or clear the notes any time.
 
 **Projects never mix.** One workspace folder is one project. Its chats, its notes and what the AIs are told all belong to that folder only; switching the workspace folder in Settings starts clean, and a chat from another project is never continued. Nothing carries over unless you ask: in the notes window, **Use notes from another project** copies that project's notes in on purpose. (File tools are limited to the workspace; shell commands the AI runs are not sandboxed, so the AI is told to stay inside the project, but treat that as a rule, not a wall.)
+## It understands messy requests first
+
+For a new task, one call of your strongest model first turns your request (typos, missing words and all) into a short clear brief (goal, look and feel, features, tech, done-when). You see it as a card, called What I understood, and the cheaper model builds exactly that instead of guessing. Turn it off in Settings (Understand first).
+
 ## It switches models by itself
 
 When a model hits its limit, Aqua does not wait: it moves to your next model, then to your other connected AIs, and then to the provider's other models with the same key (for example every Gemini flash model the key can use; each has its own free limit). It only waits when nothing is left, and it shows a countdown. The per-model fallbacks can be turned off in Settings.

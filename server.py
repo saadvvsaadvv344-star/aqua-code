@@ -44,6 +44,7 @@ DEFAULT_CONFIG = {
     "esc_steps": 8,               # steps on one tier without finishing before escalating
     "sticky_tier": False,         # keep the stronger tier for the next message
     "failover": True,             # when an AI runs out of credit or hits its limit, switch to the next connected AI
+    "understand_first": True,     # a stronger model first turns a messy request into a clear brief
     "pool_models": True,          # when every configured model is limited, also try other models of the same provider
     "level": "balanced",          # working level: low (gentle), balanced, high (full speed)
     "no_key_fallback": True,      # when no API key is saved, use the free anonymous models that still work without one
@@ -221,7 +222,7 @@ def _apply_config_update(new):
         cfg["known_workspaces"] = kn[-30:]
     if new.get("level") in ("low", "balanced", "high"):
         cfg["level"] = new["level"]
-    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback", "pool_models"):
+    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback", "pool_models", "understand_first"):
         if k in new:
             cfg[k] = bool(new[k])
     for k in NUM_KEYS:
@@ -1219,6 +1220,39 @@ def pool_models(pid, tiers):
     return ids[:8]
 
 
+BRIEF_SYSTEM = ("You turn a messy, typo-filled request from a non-expert into a clear build brief for a coding AI. Read it charitably, guess what the person REALLY wants, and fix typos. "
+               "Never ask questions. Write at most 170 words, plain text, in this shape:\nGOAL: one sentence.\nLOOK AND FEEL: 2 sentences about what the user sees and does.\nFEATURES: 5 to 8 short bullet points (concrete, buildable).\nTECH: the simplest tech that works offline in the browser (usually ONE index.html with plain JavaScript/WebGL).\nDONE WHEN: 3 checks that prove it works.\n"
+               "Technique hints: a realistic slime / jelly / liquid object = a fragment shader that ray-marches a signed-distance rounded shape with spring-wobble physics, Fresnel + refraction + subsurface glow + specular highlights, mouse poke/drag adds impulses; "
+               "a 3D scene = Three.js or raw WebGL; a game = a requestAnimationFrame loop, keyboard/mouse controls, score and restart; keep it small and polished rather than huge.")
+
+
+def make_brief(run, cfg, pid, tiers, top, text):
+    """Spend one call of the STRONGEST tier to understand the request properly, so the cheap model that builds it does not guess."""
+    prov = cfg["providers"][pid]
+    order = list(range(min(top, len(tiers) - 1), -1, -1))[:3]
+    for i in order:
+        t = tiers[i]
+        if not t.get("model") or is_limited(pid + ":" + t["model"]) or not quota_left_for(pid, t):
+            continue
+        try:
+            wait_limits(run, cfg, pid, tiers, i)
+            j = http_json(prov["base"].rstrip("/") + "/chat/completions", auth_key(prov),
+                          {"model": t["model"], "messages": [{"role": "system", "content": BRIEF_SYSTEM}, {"role": "user", "content": text[:3000]}], "max_tokens": 700}, timeout=90)
+            out = ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            u = j.get("usage") or {}
+            record_usage(pid, tiers, i, int(u.get("prompt_tokens") or 0), 0, int(u.get("completion_tokens") or 0), bool(prov.get("free")))
+            out = out.strip()
+            if len(out) > 40:
+                return out[:1800], t["model"]
+        except LLMError as e:
+            if e.status in (429, 503):
+                note_limit(pid, prov["label"], t["model"], e.msg)
+            continue
+        except Exception:
+            continue
+    return None, None
+
+
 def agent_loop(run, user_text, forced_tier):
     sess = run.sess
     cfg = load_cfg()
@@ -1242,8 +1276,15 @@ def agent_loop(run, user_text, forced_tier):
         ti = min(cfg["start_tier"], top)
 
     messages = sess["messages"]
-    messages.append({"role": "user", "content": user_text})
+    first_msg = not messages
+    brief, bmodel = None, None
+    if cfg.get("understand_first", True) and first_msg and len(user_text.strip()) >= 12 and not run.stop:
+        run.emit("status", persist=False, text="Understanding your request first (%s)" % plabel)
+        brief, bmodel = make_brief(run, cfg, pid, tiers, top, user_text)
+    messages.append({"role": "user", "content": user_text + (("\n\n[aqua brief: a clean reading of the request above, written by a stronger model. Build exactly this, and ignore typos in the original]\n" + brief) if brief else "")})
     run.emit("user", text=user_text)
+    if brief:
+        run.emit("brief", text=brief, model=bmodel)
     if notice:
         run.emit("notice", text=notice)
     steps_here = errs = 0

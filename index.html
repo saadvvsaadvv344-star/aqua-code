@@ -703,6 +703,10 @@ function addFailover(ev){
 function fmtIn(sec){sec=Math.max(0,Math.round(sec));if(sec<90)return sec+' s';if(sec<5400)return Math.round(sec/60)+' min';return Math.floor(sec/3600)+' h '+String(Math.floor(sec%3600/60)).padStart(2,'0')+' min'}
 function clockAt(ts){const d=new Date(ts*1000),n=new Date();const t=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});if(d.toDateString()===n.toDateString())return t;const tm=new Date(n.getTime()+864e5);return (d.toDateString()===tm.toDateString()?'tomorrow ':d.toLocaleDateString([], {weekday:'short'})+' ')+t}
 function limitOf(pid,model){const L=S.usage&&S.usage.limits;if(!L)return null;const now=Date.now()/1000;return (L.blocked||[]).find(b=>b.pid===pid&&b.model===model&&b.until>now)||null}
+function addBrief(ev){
+  const d=el(`<div class="arrow"><span class="chip" style="color:var(--teal)"><i></i>What I understood</span></div><div><b>Your request, made clear</b><small style="white-space:pre-wrap;display:block;margin-top:4px">${esc(ev.text)}</small><small class="mut" style="display:block;margin-top:6px">Written by ${esc(ev.model||"a stronger model")}. If this is wrong, just tell me what to change.</small></div>`,"esc");
+  add(d);
+}
 function addKeep(ev){
   add(el(`<div class="arrow"><span class="chip" style="color:var(--teal)"><i></i>${ev.level==='high'?'Max':'Balanced'}</span></div><div><b>Still working: round ${ev.round}</b><small>About ${ev.minutes_left} min of working time left. Now: ${esc(ev.focus)}. Press Stop any time.</small></div>`,'esc'));
 }
@@ -752,6 +756,7 @@ function handle(ev){
     case 'failover':clearStatus();addFailover(ev);break;
     case 'limit':clearStatus();addLimit(ev);break;
     case 'keepgoing':clearStatus();addKeep(ev);break;
+    case 'brief':clearStatus();addBrief(ev);break;
     case 'escalate':clearStatus();addEscalate(ev);if(S.cur)S.cur.tier=ev.to;renderRight();break;
     case 'usage':S.usage=ev.usage;S.sessCost=ev.session_cost;renderRight();renderHead();break;
     case 'preview':if(ev.t>Date.now()/1000-45&&(!ev.auto||!PV.closedByUser)&&!(ev.auto&&PV.url===ev.url))pvGo(ev.url);break;
@@ -937,7 +942,7 @@ function collect(){
   if(g('f_base')){p.base=g('f_base').value;p.free=g('f_free').checked}
   if(g('tiers')){p.tiers=[...m.querySelectorAll('.trow')].map(r=>{const v=n=>r.querySelector('[data-k="'+n+'"]').value;return{name:v('name'),model:v('model'),in:+v('in')||0,cache:+v('cache')||0,out:+v('out')||0,rpm:+v('rpm')||0,rpd:+v('rpd')||0}})}
   if(g('f_ws')){draft.workspace=g('f_ws').value;draft.approval=g('f_appr').value;draft.level=g('f_lvl').value;draft.daily_budget=+g('f_day').value||0;draft.total_budget=+g('f_tot').value||0;
-    draft.auto_escalate=g('f_auto').checked;draft.sticky_tier=g('f_sticky').checked;draft.failover=g('f_fo').checked;draft.pool_models=g('f_pool').checked;draft.failover_paid=g('f_fop').checked;draft.no_key_fallback=g('f_nk').checked;draft.start_tier=+g('f_start').value||0;draft.max_tier=+g('f_max').value;draft.esc_errors=+g('f_errs').value||2;draft.esc_steps=+g('f_steps').value||8;draft.max_steps=+g('f_ms').value||40}
+    draft.auto_escalate=g('f_auto').checked;draft.sticky_tier=g('f_sticky').checked;draft.failover=g('f_fo').checked;draft.pool_models=g('f_pool').checked;draft.understand_first=g('f_und').checked;draft.failover_paid=g('f_fop').checked;draft.no_key_fallback=g('f_nk').checked;draft.start_tier=+g('f_start').value||0;draft.max_tier=+g('f_max').value;draft.esc_errors=+g('f_errs').value||2;draft.esc_steps=+g('f_steps').value||8;draft.max_steps=+g('f_ms').value||40}
 }
 /* keys are only ever sent by the key manager (never as a side effect of saving other settings) */
 function noKeys(o){const c=JSON.parse(JSON.stringify(o));Object.values(c.providers||{}).forEach(p=>{delete p.key;delete p.has_key});return c}
@@ -970,6 +975,7 @@ function drawSettings(){
    <label class="sw"><input id="f_auto" type="checkbox" ${draft.auto_escalate?'checked':''}><i></i>Auto-escalate to the next model when the current one struggles</label>
    <label class="sw"><input id="f_sticky" type="checkbox" ${draft.sticky_tier?'checked':''}><i></i>Stay on the stronger model for the next message (otherwise reset to cheap)</label>
    <label class="sw"><input id="f_fo" type="checkbox" ${draft.failover!==false?'checked':''}><i></i>When an AI runs out of credit or hits its limit, switch to the next connected AI</label>
+   <label class="sw"><input id="f_und" type="checkbox" ${draft.understand_first!==false?'checked':''}><i></i>Understand first: before building, a stronger model turns my request (typos and all) into a clear brief, so the cheap model does not guess</label>
    <label class="sw"><input id="f_pool" type="checkbox" ${draft.pool_models!==false?'checked':''}><i></i>When every model I set is limited, also try the provider's other models with the same key (each has its own free limit) instead of waiting</label>
    <label class="sw"><input id="f_fop" type="checkbox" ${draft.failover_paid?'checked':''}><i></i>Also allow switching to paid providers (can spend money; off = free ones only)</label>
    <label class="sw"><input id="f_nk" type="checkbox" ${draft.no_key_fallback!==false?'checked':''}><i></i>With no API key saved, use the free anonymous model (LLM7). It is slow and your prompts are public.</label>
