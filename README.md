@@ -1,8 +1,9 @@
-﻿<p align="center"><img src="assets/logo.png" width="120" alt="Aqua Code logo"></p>
+<h2 align="center"><a href="https://youtu.be/VPRA-yaupJc">Watch the video on YouTube: how Aqua Code works + free API key tutorial</a></h2>
+
+<p align="center"><img src="assets/logo.png" width="120" alt="Aqua Code logo"></p>
 
 # Aqua Code
 
-<p align="center"><b><a href="https://youtu.be/VPRA-yaupJc">Watch the 5-minute video on YouTube</a></b> (every feature and the free API key tutorial)</p>
 
 **Your own coding agent. Bring your DeepSeek or Gemini key, start cheap, escalate only when needed.**
 
