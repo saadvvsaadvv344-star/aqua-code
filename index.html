@@ -1115,6 +1115,21 @@ function openWelcome(prefer){
   w.classList.add('show');draw();
 }
 
+/* ---------- test every saved key for real and say what is wrong ---------- */
+async function openKeyTest(){
+  const {box,closeW}=keyWin();
+  box.innerHTML='<div style="padding:50px 30px;text-align:center"><h2 style="font-size:22px">Testing your keys...</h2><p class="mut" style="margin-top:8px">Sending one tiny request to each of your services. This takes a few seconds.</p></div>';
+  const r=await api('/api/keys/check',{});
+  const ST={works:['Works','var(--green)'],partly:['Works, one model is limited','var(--amber)'],limit:['At its free limit for now','var(--amber)'],broken:['Not usable','var(--red)']};
+  const why={limit:'Free limit reached: it comes back later and Aqua switches to another AI meanwhile.',credit:'Refused for lack of credit or a card on this account. The key itself is valid.',rejected:'The service rejected the key. Make a new key and paste it again.',other:'The service gave an unexpected answer.'};
+  const rows=(r.services||[]);
+  const good=rows.filter(s=>s.state==='works'||s.state==='partly').length;
+  box.innerHTML=`<div style="padding:26px 30px 4px;text-align:center;position:relative"><button class="btn pill ic" id="kt_x" title="Close" aria-label="Close" style="position:absolute;right:18px;top:18px">${ic('x')}</button><h2 style="font-size:24px;letter-spacing:-.3px">Your keys, tested</h2><p class="mut" style="margin-top:6px">${good} of ${rows.length} saved keys work right now. Each line is a real request to that service.</p></div>
+    <div class="modal-b" style="padding-top:12px">${rows.map(s=>{const st=ST[s.state]||ST.broken;return `<div style="padding:11px 14px;border-radius:14px;background:rgba(128,128,128,.08);margin-bottom:8px"><div style="display:flex;gap:10px;align-items:center"><b style="flex:1">${esc(s.service)}</b><span class="chip" style="color:${st[1]}"><i></i>${st[0]}</span></div>${s.rows.map(x=>`<div style="font-size:12.5px;margin-top:6px;display:flex;gap:8px"><span style="color:${x.ok?'var(--green)':'var(--red)'}">${ic(x.ok?'check':'x',16)}</span><div><span class="mono">${esc(x.model)}</span>${x.ok?` <span style="color:var(--mut)">${x.ms} ms</span>`:`<div style="color:var(--mut)">${esc(why[x.kind]||'')} <span class="mono" style="word-break:break-word">${esc((x.error||'').slice(0,160))}</span></div>`}</div></div>`).join('')}</div>`}).join('')||'<div style="padding:24px;text-align:center;color:var(--mut)">No key is saved yet. Use Paste keys.</div>'}</div>
+    <div class="modal-f"><button class="btn ghost" id="kt_again">Test again</button><button class="btn gold" id="kt_done">Done</button></div>`;
+  $('#kt_x').onclick=closeW;$('#kt_done').onclick=closeW;$('#kt_again').onclick=openKeyTest;
+}
+
 /* ---------- every model of a provider and what Aqua does with it ---------- */
 async function openModelStatus(pid){
   const {box,closeW}=keyWin();
@@ -1309,7 +1324,7 @@ function drawAiMenu(){
   const m=$('#aiMenu');
   const ents=Object.entries(S.cfg.providers).sort((a,b)=>(a[1].group?1:0)-(b[1].group?1:0));let lastG='';
   m.innerHTML=`<div class="aihead">All AI providers (${ents.filter(e=>e[1].has_key).length} connected of ${ents.length})</div>`+ents.map(([k,v])=>{const g=v.group||'Main providers';const hd=g!==lastG?(lastG=g,`<div class="aihead" style="padding-top:12px;color:var(--mut)">${esc(g)}</div>`):'';return hd+`<button class="airow ${k===S.cfg.provider?'on':''}" data-k="${k}"><i class="kd ${v.has_key?'ok':''}"></i><span class="aitx"><b>${esc(v.label)}</b><em>${v.tiers.map(t=>esc(t.model||'(no model)')).join('  /  ')}</em></span><span class="aist ${v.has_key?'ok':''}">${k===S.cfg.provider?'In use':v.has_key?'Connected':v.nokey?'Enable':'Needs key'}</span></button>`}).join('')
-    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiGate">${ic('bolt')}One key for everything</button><button class="btn ghost" id="aiChk">${ic('check')}Get free keys</button><button class="btn ghost" id="aiMods">${ic('layers')}Models in use</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
+    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiGate">${ic('bolt')}One key for everything</button><button class="btn ghost" id="aiChk">${ic('check')}Get free keys</button><button class="btn ghost" id="aiMods">${ic('layers')}Models in use</button><button class="btn ghost" id="aiTest">${ic('check')}Test my keys</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
   m.querySelectorAll('.airow').forEach(b=>b.onclick=async()=>{
     const k=b.dataset.k,v=S.cfg.providers[k];m.hidden=true;
     if(!v.has_key){openWelcome(k);return}
@@ -1318,7 +1333,7 @@ function drawAiMenu(){
     const r=await api('/api/config',{provider:k});if(!r.config){toast(r.error||'Could not switch');return}
     S.cfg=r.config;S.forced='auto';S.cur=null;render();if(!S.sid)showHero();toast('Now talking with '+v.label);
   });
-  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openPasteKeys()};$('#aiGate').onclick=()=>{m.hidden=true;openGateway()};$('#aiChk').onclick=()=>{m.hidden=true;openKeyChecklist()};$('#aiMods').onclick=()=>{m.hidden=true;openModelStatus()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
+  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openPasteKeys()};$('#aiGate').onclick=()=>{m.hidden=true;openGateway()};$('#aiChk').onclick=()=>{m.hidden=true;openKeyChecklist()};$('#aiMods').onclick=()=>{m.hidden=true;openModelStatus()};$('#aiTest').onclick=()=>{m.hidden=true;openKeyTest()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
 }
 document.addEventListener('click',e=>{const m=$('#aiMenu');if(m&&!m.hidden&&!e.target.closest('#aiMenu'))m.hidden=true});
 

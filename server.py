@@ -3253,6 +3253,35 @@ def models_status(pid):
     return {"ok": True, "provider": p["label"], "rows": rows, "paid_count": paid, "can_add": len(p["tiers"]) < 6}
 
 
+def keys_check():
+    """Test every saved key for real (the first two models of each service) and say plainly what is wrong with the ones that fail."""
+    import concurrent.futures as cf
+    cfg = load_cfg()
+    jobs = [(pid, i) for pid, v in cfg["providers"].items() if has_access(v) for i, t in enumerate(v["tiers"][:2]) if t.get("model")]
+    with cf.ThreadPoolExecutor(8) as ex:
+        res = list(ex.map(lambda j: (j, test_connection(j[0], j[1])), jobs))
+
+    def kind(err):
+        e = str(err or "")
+        if re.search(r"HTTP 429|quota|rate.?limit|too many requests", e, re.I):
+            return "limit"
+        if re.search(r"HTTP 402|credit|card|payment|billing", e, re.I):
+            return "credit"
+        if re.search(r"HTTP 40[13]", e) or KEY_BAD_RX.search(e):
+            return "rejected"
+        return "other"
+    out = {}
+    for (pid, i), r in res:
+        p = cfg["providers"][pid]
+        d = out.setdefault(pid, {"id": pid, "service": p["label"], "free": bool(p.get("free")), "rows": []})
+        d["rows"].append({"model": p["tiers"][i]["model"], "ok": bool(r.get("ok")), "ms": r.get("ms"), "kind": None if r.get("ok") else kind(r.get("error")),
+                          "error": None if r.get("ok") else re.sub(r"\s+", " ", str(r.get("error") or ""))[:260]})
+    for d in out.values():
+        oks = sum(1 for x in d["rows"] if x["ok"])
+        d["state"] = "works" if oks == len(d["rows"]) else ("partly" if oks else ("limit" if all(x["kind"] == "limit" for x in d["rows"]) else "broken"))
+    return {"ok": True, "services": list(out.values())}
+
+
 def models_add(pid, model):
     model = str(model or "").strip()
     with _lock:
@@ -3510,6 +3539,8 @@ class H(BaseHTTPRequestHandler):
         try:
             if u.path == "/v1/chat/completions":
                 return self._gateway_chat(b)
+            if u.path == "/api/keys/check":
+                return self._send(200, keys_check())
             if u.path == "/api/models/status":
                 return self._send(200, models_status(b.get("provider") or load_cfg()["provider"]))
             if u.path == "/api/models/add":
