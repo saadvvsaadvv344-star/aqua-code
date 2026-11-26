@@ -1951,7 +1951,9 @@ def auto_pick_ids(rows):
 # Which service a pasted key belongs to. Keys that have no recognisable prefix can be written as  name: key
 KEY_PREFIXES = [("sk-or-", "openrouter"), ("AIza", "gemini"), ("gsk_", "groq"), ("csk-", "cerebras"), ("nvapi-", "nvidia"),
                 ("hf_", "huggingface"), ("github_pat_", "github"), ("ghp_", "github"), ("fw_", "fireworks"),
-                ("cfut_", "cloudflare"), ("cfat_", "cloudflare")]
+                ("cfut_", "cloudflare"), ("cfat_", "cloudflare"), ("AQ.", "gemini")]
+# keys whose shape (not start) tells the service
+KEY_SHAPES = [(re.compile(r"^[0-9a-f]{32}\.[A-Za-z0-9]{8,24}$"), "zai")]
 HUB_PRESETS = {"together": ("Together AI", "https://api.together.xyz/v1"), "fireworks": ("Fireworks AI", "https://api.fireworks.ai/inference/v1"),
                "deepinfra": ("DeepInfra", "https://api.deepinfra.com/v1/openai"), "sambanova": ("SambaNova", "https://api.sambanova.ai/v1"),
                "hyperbolic": ("Hyperbolic", "https://api.hyperbolic.xyz/v1")}
@@ -1979,6 +1981,9 @@ def resolve_service(name, key, cfg):
                 return ("prov", svc)
             if svc in HUB_PRESETS:
                 return ("hub", svc)
+    for rx, svc in KEY_SHAPES:
+        if rx.match(key) and svc in provs:
+            return ("prov", svc)
     return None
 
 
@@ -2068,12 +2073,18 @@ def identify_and_connect(key, hint):
 
 def cloudflare_account(token):
     """A Cloudflare token alone is enough: ask Cloudflare which account it belongs to (the Account ID goes into the address)."""
-    try:
-        j = http_json("https://api.cloudflare.com/client/v4/accounts", token, method="GET", timeout=20)
-        res = j.get("result") or []
-        return str(res[0]["id"]) if res and res[0].get("id") else None
-    except Exception:
-        return None
+    for path in ("/accounts", "/memberships"):
+        try:
+            j = http_json("https://api.cloudflare.com/client/v4" + path, token, method="GET", timeout=20)
+            res = j.get("result") or []
+            if res:
+                first = res[0]
+                acct = first.get("id") if path == "/accounts" else (first.get("account") or {}).get("id")
+                if acct:
+                    return str(acct)
+        except Exception:
+            continue
+    return None
 
 
 def _label_of(pid):
@@ -2111,7 +2122,7 @@ def connect_key(kind, ident, key):
                 else:                                        # only a token was pasted: ask Cloudflare which account it belongs to
                     acct = cloudflare_account(key)
                     if not acct:
-                        return {"service": prov["label"], "ok": False, "detail": "Cloudflare did not tell which account this token belongs to (the token may lack the permission to read the account, or it is wrong). " + hint}
+                        return {"service": prov["label"], "ok": False, "need": "account_id", "detail": "Cloudflare did not tell which account this token belongs to, so type your Account ID. Open dash.cloudflare.com: the 32 letters and numbers in the address bar after the site name are your Account ID."}
                     new_base = old_base.replace("{account_id}", acct)
             else:
                 new_base = old_base
