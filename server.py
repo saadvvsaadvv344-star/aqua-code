@@ -629,6 +629,12 @@ TOOL_FUNCS = {"add_note": lambda ws, a: None, "start_server": lambda ws, a: None
 
 # --------------------------------------------------------------------------- runs & sessions
 sessions = _read_json(SESS_PATH, {})
+try:
+    _cur = os.path.normcase(os.path.realpath(_merge(DEFAULT_CONFIG, _read_json(CFG_PATH, {}))["workspace"]))
+    for _s in sessions.values():
+        _s.setdefault("workspace", _cur)
+except Exception:
+    pass
 runs = {}
 
 
@@ -719,7 +725,9 @@ def system_prompt(ws):
             "All paths are relative to the workspace. For a plain web page just write index.html in the workspace: it is shown live in the user's Preview pane and reloads when you edit it. For frameworks use start_server. Keep prose short. If the task is beyond you or you keep "
             "failing, call request_stronger_model with a reason instead of guessing. Other AIs may work on this project after you "
             "(the user switches models and providers), so when the work is complete call add_note once with 1-3 short lines "
-            "(what you did, what is left, anything the next AI must know), then answer with a brief summary and no tool call."
+            "(what you did, what is left, anything the next AI must know), then answer with a brief summary and no tool call. "
+            "This workspace is ONE separate project: use only its files and the notes below. Never assume details from other projects, "
+            "folders or earlier chats about something else; if the user wants another project's notes they will import them."
             % ("Windows (PowerShell)" if os.name == "nt" else "Linux/macOS (bash)", ws))
     notes = read_notes(ws)
     if notes:
@@ -728,10 +736,14 @@ def system_prompt(ws):
     return base
 
 
+def ws_key(ws):
+    return os.path.normcase(os.path.realpath(ws))
+
+
 def new_session(title="New chat"):
     sid = uuid.uuid4().hex[:10]
     sessions[sid] = {"id": sid, "title": title, "created": time.time(), "messages": [], "events": [],
-                     "cost": 0.0, "tier": None}
+                     "cost": 0.0, "tier": None, "workspace": ws_key(load_cfg()["workspace"])}
     return sessions[sid]
 
 
@@ -1097,6 +1109,8 @@ def agent_loop(run, user_text, forced_tier):
 def start_run(sid, text, tier):
     with _lock:
         sess = sessions.get(sid) if sid else None
+        if sess is not None and sess.get("workspace") != ws_key(load_cfg()["workspace"]):
+            sess = None                      # a chat from another project is never continued here
         if sess is None:
             sess = new_session()
         for r in runs.values():
@@ -1538,14 +1552,14 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/state":
                 cfg = load_cfg()
                 lst = sorted(({"id": s["id"], "title": s["title"], "created": s["created"], "cost": s.get("cost", 0.0)}
-                              for s in sessions.values()), key=lambda s: -s["created"])
+                              for s in sessions.values() if s.get("workspace") == ws_key(cfg["workspace"])), key=lambda s: -s["created"])
                 active = {r.sess["id"]: r.id for r in runs.values() if not r.done}
                 return self._send(200, {"config": masked_cfg(cfg), "usage": usage_snapshot(cfg), "sessions": lst, "preview_port": PREVIEW_PORT, "platform": sys.platform, "machine": platform.machine(), "level": cfg["level"], "cores": os.cpu_count() or 1, "core_cap": _level_cores(cfg["level"]),
                                         "active": active, "budget": budget_state(cfg)})
             if u.path == "/api/session":
                 s = sessions.get(q.get("id"))
-                if not s:
-                    return self._send(404, {"error": "no such chat"})
+                if not s or s.get("workspace") != ws_key(load_cfg()["workspace"]):
+                    return self._send(404, {"error": "no such chat in this project"})
                 run = next((r for r in runs.values() if r.sess["id"] == s["id"] and not r.done), None)
                 return self._send(200, {"id": s["id"], "title": s["title"], "events": s["events"], "cost": s.get("cost", 0.0),
                                         "run": run.id if run else None, "run_pos": len(run.events) if run else 0,
@@ -1635,6 +1649,14 @@ class H(BaseHTTPRequestHandler):
                 if r:
                     r.force_escalate = True
                 return self._send(200, {"ok": bool(r)})
+            if u.path == "/api/notes/import":
+                src = os.path.join(str(b.get("path") or "").strip().strip('"'), NOTES_DIR, "NOTES.md")
+                if not os.path.isfile(src):
+                    return self._send(200, {"ok": False, "error": "No project notes found in that folder (looked for %s)." % src})
+                with open(src, "r", encoding="utf-8", errors="replace") as f:
+                    body = f.read()[-4000:]
+                append_note(load_cfg()["workspace"], "Aqua (imported because the user asked)", "Notes copied from another project, %s:\n%s" % (b.get("path"), body))
+                return self._send(200, {"ok": True})
             if u.path == "/api/notes/clear":
                 try:
                     os.remove(notes_path(load_cfg()["workspace"]))

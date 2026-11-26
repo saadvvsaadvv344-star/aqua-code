@@ -92,6 +92,8 @@ The **Preview** button opens a live pane next to the chat (drag its edge to resi
 ## Project notes (every AI remembers what happened)
 
 Aqua keeps a shared notebook for each project at `.aqua/NOTES.md` inside your workspace (open it with the file button in the sidebar). After each task Aqua adds an automatic log (the request, which AI did it, files changed, commands run, problems, outcome), every AI can also save its own note with the `add_note` tool (what it did, what is left), and every switch between models or providers is logged. The latest notes are put in front of **every** AI on every call, so when Gemini runs out and Groq takes over, or you start a new chat, the next AI already knows what happened. You can read or clear the notes any time.
+
+**Projects never mix.** One workspace folder is one project. Its chats, its notes and what the AIs are told all belong to that folder only; switching the workspace folder in Settings starts clean, and a chat from another project is never continued. Nothing carries over unless you ask: in the notes window, **Use notes from another project** copies that project's notes in on purpose. (File tools are limited to the workspace; shell commands the AI runs are not sandboxed, so the AI is told to stay inside the project, but treat that as a rule, not a wall.)
 ## How it saves credit
 
 Every task starts on the **cheapest** model and only moves up when the cheap one struggles:
