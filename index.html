@@ -696,6 +696,9 @@ function addFailover(ev){
 function fmtIn(sec){sec=Math.max(0,Math.round(sec));if(sec<90)return sec+' s';if(sec<5400)return Math.round(sec/60)+' min';return Math.floor(sec/3600)+' h '+String(Math.floor(sec%3600/60)).padStart(2,'0')+' min'}
 function clockAt(ts){const d=new Date(ts*1000),n=new Date();const t=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});if(d.toDateString()===n.toDateString())return t;const tm=new Date(n.getTime()+864e5);return (d.toDateString()===tm.toDateString()?'tomorrow ':d.toLocaleDateString([], {weekday:'short'})+' ')+t}
 function limitOf(pid,model){const L=S.usage&&S.usage.limits;if(!L)return null;const now=Date.now()/1000;return (L.blocked||[]).find(b=>b.pid===pid&&b.model===model&&b.until>now)||null}
+function addKeep(ev){
+  add(el(`<div class="arrow"><span class="chip" style="color:var(--teal)"><i></i>${ev.level==='high'?'Max':'Balanced'}</span></div><div><b>Still working: round ${ev.round}</b><small>About ${ev.minutes_left} min of working time left. Now: ${esc(ev.focus)}. Press Stop any time.</small></div>`,'esc'));
+}
 function addLimit(ev){
   const left=ev.until-Date.now()/1000,daily=ev.kind==='daily';
   add(el(`<div class="arrow"><span class="chip" style="color:var(--amber)"><i></i>${esc(ev.provider)}</span></div><div><b>${daily?'Daily limit reached':'Limit reached for now'}: ${esc(ev.model)}</b><small>It comes back in about ${fmtIn(left)} (at ${clockAt(ev.until)}). Aqua uses another model meanwhile.</small></div>`,'esc'));
@@ -741,6 +744,7 @@ function handle(ev){
     case 'ask_result':resolveAsk(ev);break;
     case 'failover':clearStatus();addFailover(ev);break;
     case 'limit':clearStatus();addLimit(ev);break;
+    case 'keepgoing':clearStatus();addKeep(ev);break;
     case 'escalate':clearStatus();addEscalate(ev);if(S.cur)S.cur.tier=ev.to;renderRight();break;
     case 'usage':S.usage=ev.usage;S.sessCost=ev.session_cost;renderRight();renderHead();break;
     case 'preview':if(ev.t>Date.now()/1000-45&&(!ev.auto||!PV.closedByUser)&&!(ev.auto&&PV.url===ev.url))pvGo(ev.url);break;
@@ -858,7 +862,7 @@ const LEVELS=['low','balanced','high'],LV_NAME={low:'Low',balanced:'Balanced',hi
 function renderLevel(){
   const box=$('#lvChips');if(!box||!S.cfg)return;const tr0=box.querySelector('.lvtrack');if(tr0&&tr0.classList.contains('drag'))return;
   const lv=S.cfg.level||'balanced',n=S.cores||1,cap=S.coreCap||n,idx=LEVELS.indexOf(lv);
-  const tip={low:`Low: gentle, plain look, ${cap} of ${n} cores, lowest priority`,balanced:`Balanced: soft glass, all ${n} cores`,high:`Max: full liquid glass with a live water floor, all ${n} cores`};
+  const tip={low:`Low: gentle, plain look, ${cap} of ${n} cores, lowest priority. The AI stops as soon as the task is done`,balanced:`Balanced: soft glass, all ${n} cores. The AI keeps improving its work for up to 30 minutes`,high:`Max: full liquid glass with a live water floor, all ${n} cores. The AI keeps testing, adding detail and polishing for up to 1 hour`};
   box.title='Working level (drag or click) - '+tip[lv];
   box.innerHTML=`<span class="lvic">${ic('gauge','width:17px;height:17px')}</span><div class="lvtrack"><b class="lvthumb" data-l="${lv}" style="transform:translateX(${idx*100}%)"></b>${LEVELS.map(k=>`<button data-l="${k}" class="${k===lv?'on':''}" title="${esc(tip[k])}">${LV_NAME[k]}</button>`).join('')}</div>`;
   const tr=box.querySelector('.lvtrack'),th=box.querySelector('.lvthumb');
@@ -939,7 +943,7 @@ function drawSettings(){
   <div class="sec"><h3>${ic('folder')}Agent</h3><div class="g2"><label class="fld">Workspace folder = one project (its chats and notes stay separate)<input id="f_ws" value="${esc(draft.workspace)}"></label>
    <label class="fld">Glass quality (this browser)<select id="f_fx"><option value="full" ${FX.mode==='full'?'selected':''}>Full: refraction and animated background (heavy)</option><option value="lite" ${FX.mode==='lite'?'selected':''}>Lite: soft glass, smooth and fast (recommended)</option><option value="off" ${FX.mode==='off'?'selected':''}>Off: plain flat look, no liquid glass (fastest)</option></select></label>
    <label class="fld">Water intro animation (this browser)<select id="f_intro"><option value="on" ${(()=>{try{return localStorage.getItem('ac-intro')!=='off'?'selected':''}catch(e){return'selected'}})()}>On</option><option value="off" ${(()=>{try{return localStorage.getItem('ac-intro')==='off'?'selected':''}catch(e){return''}})()}>Off</option></select></label>
-   <label class="fld">Working level<select id="f_lvl"><option value="low" ${draft.level==='low'?'selected':''}>Low: gentle, plain look, lowest priority</option><option value="balanced" ${(draft.level||'balanced')==='balanced'?'selected':''}>Balanced (default)</option><option value="high" ${draft.level==='high'?'selected':''}>Max: full speed, full glass and live water</option></select></label>
+   <label class="fld">Working level<select id="f_lvl"><option value="low" ${draft.level==='low'?'selected':''}>Low: gentle, plain look; the AI stops when done</option><option value="balanced" ${(draft.level||'balanced')==='balanced'?'selected':''}>Balanced (default): the AI keeps improving for up to 30 min</option><option value="high" ${draft.level==='high'?'selected':''}>Max: full glass and live water; the AI works up to 1 hour</option></select></label>
    <label class="fld">Approval mode<select id="f_appr"><option value="ask" ${draft.approval==='ask'?'selected':''}>Ask for every change</option><option value="edits" ${draft.approval==='edits'?'selected':''}>Auto edits, ask for commands</option><option value="auto" ${draft.approval==='auto'?'selected':''}>Full auto</option></select></label></div></div>
   </div><div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn gold" id="saveCfg">${ic('check')}Save</button></div>`);
   const m=$('#modal');

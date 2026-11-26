@@ -255,6 +255,14 @@ def _apply_config_update(new):
     return cfg
 
 
+# How long the AI keeps improving its work after it first says "done" (the working level also sets how hard Aqua uses this PC)
+LEVEL_WORK = {"low": 0, "balanced": 30 * 60, "high": 60 * 60}      # seconds
+LEVEL_STEPS = {"low": 0, "balanced": 150, "high": 400}              # step ceiling for long work
+KEEP_FOCI = ["test and review everything: run it, look at it, and fix every bug and visual problem you find",
+             "add the missing depth: more detail, features, content and interactions that the request implies",
+             "polish: visuals, animation, UX, phone-size layout, edge cases and speed",
+             "code quality: clean structure, error handling, and a short README or usage notes"]
+
 # --------------------------------------------------------------------------- working level (how hard Aqua works on this PC)
 _nice_done = [0]
 
@@ -519,6 +527,47 @@ def clean_messages(messages, model):
             keep = "reasoner" in model and i > last_user
             if not keep:
                 c.pop("reasoning_content", None)
+        out.append(c)
+    return out
+
+
+def compact_for_context(msgs, limit=230000, keep_last=14):
+    """Long (up to 1 hour) runs would overflow the model's memory: when the chat gets big, shrink OLD tool outputs and old file dumps (the files themselves stay on disk)."""
+    total = sum(len(json.dumps(m, ensure_ascii=False)) for m in msgs)
+    if total <= limit:
+        return msgs
+    out = []
+    cut = len(msgs) - keep_last
+    for i, m in enumerate(msgs):
+        if i >= cut or i == 0:
+            out.append(m)
+            continue
+        c = dict(m)
+        if c.get("role") == "tool" and isinstance(c.get("content"), str) and len(c["content"]) > 500:
+            c["content"] = c["content"][:400] + "\n[... older output shortened to save memory ...]"
+        elif c.get("role") == "assistant":
+            if isinstance(c.get("content"), str) and len(c["content"]) > 1500:
+                c["content"] = c["content"][:1500] + " [...]"
+            if c.get("tool_calls"):
+                tcs = []
+                for tc in c["tool_calls"]:
+                    tc = dict(tc)
+                    f = dict(tc.get("function") or {})
+                    a = f.get("arguments") or ""
+                    if len(a) > 600:
+                        try:
+                            d = json.loads(a)
+                            for k in ("content", "new", "old"):
+                                if isinstance(d.get(k), str) and len(d[k]) > 200:
+                                    d[k] = d[k][:200] + "... [omitted, it is in the file]"
+                            f["arguments"] = json.dumps(d, ensure_ascii=False)
+                        except Exception:
+                            pass
+                    tc["function"] = f
+                    tcs.append(tc)
+                c["tool_calls"] = tcs
+        elif c.get("role") == "user" and isinstance(c.get("content"), str) and len(c["content"]) > 2500:
+            c["content"] = c["content"][:2500] + " [...]"
         out.append(c)
     return out
 
@@ -919,7 +968,7 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
     if not t["model"]:
         raise LLMError(400, "No model name is set for the %s tier. Open Settings, Provider and models, and pick one." % t["name"])
     payload = {"model": t["model"], "messages": [{"role": "system", "content": system_prompt(cfg["workspace"], THREED_PROMPT if wants_3d(messages, cfg["workspace"]) else "")}] +
-               clean_messages(messages, t["model"]), "tools": TOOLS}
+               compact_for_context(clean_messages(messages, t["model"])), "tools": TOOLS}
     url = prov["base"].rstrip("/") + "/chat/completions"
     img, nov = getattr(run, "look_img", None), getattr(run, "no_vision", None)
     if nov is None:
@@ -1096,6 +1145,11 @@ def agent_loop(run, user_text, forced_tier):
     sigs = []
     run_cost = 0.0
     steps = 0
+    lvl = cfg.get("level", "balanced")
+    work_budget = LEVEL_WORK.get(lvl, 0)
+    max_steps_eff = max(cfg["max_steps"], LEVEL_STEPS.get(lvl, 0))
+    t_start = time.time()
+    push = {"n": 0, "idle": 0, "writes": 0, "w_at": 0}
     status = "done"
     acts = {"files": [], "cmds": [], "errors": [], "ais": []}
     last_text = ""
@@ -1161,7 +1215,7 @@ def agent_loop(run, user_text, forced_tier):
         return False
 
     try:
-        while steps < cfg["max_steps"] and not run.stop:
+        while steps < max_steps_eff and not run.stop:
             if run.force_escalate:
                 run.force_escalate = False
                 escalate("manual request")
@@ -1247,6 +1301,22 @@ def agent_loop(run, user_text, forced_tier):
                     messages.append({"role": "user", "content": "[aqua check] You said you are done, but the page still fails in the browser:\n- " + "\n- ".join(pe[:6]) +
                                      "\nThis is the real error. Find the cause with search/read_file and fix it (do not change unrelated things), then call look_page to confirm before you finish."})
                     continue
+                left = work_budget - (time.time() - t_start)
+                if work_budget > 0 and left > 90 and not run.stop and steps < max_steps_eff - 3:
+                    if push["n"] > 0:
+                        push["idle"] = push["idle"] + 1 if push["writes"] == push["w_at"] else 0
+                    if push["idle"] < 2:
+                        push["n"] += 1
+                        push["w_at"] = push["writes"]
+                        focus = KEEP_FOCI[(push["n"] - 1) % len(KEEP_FOCI)]
+                        run.emit("keepgoing", round=push["n"], minutes_left=int(left // 60), level=lvl, focus=focus)
+                        messages.append({"role": "user", "content": "[aqua keep going] The user picked the %s working level: they want the BEST result, not the fastest. About %d minutes of working time are left. "
+                                         "Do not stop at good enough. Round %d focus: %s. The original request was: %s\n"
+                                         "First look at the real result (look_page, look_3d, run it, run the tests), list 3 concrete weaknesses, then fix them with real edits. "
+                                         "Only if you truly cannot improve anything more, answer with a brief final summary and no tool call." % (
+                                             {"balanced": "Balanced", "high": "Max"}.get(lvl, lvl), int(left // 60), push["n"], focus, user_text.strip()[:300])})
+                        steps_here = errs = 0
+                        continue
                 break
 
             step_err = False
@@ -1279,6 +1349,8 @@ def agent_loop(run, user_text, forced_tier):
                 if sigs[-6:].count(sig) >= 3 and name != "run_command":
                     out += "\n[aqua] You repeated this exact call 3 times. Change approach."
                     err = True
+                if name in WRITE_TOOLS and not err:
+                    push["writes"] += 1
                 if name in WRITE_TOOLS and not err and args.get("path") and args["path"] not in acts["files"]:
                     acts["files"].append(args["path"])
                 if name in ("run_command", "start_server"):
@@ -1302,7 +1374,7 @@ def agent_loop(run, user_text, forced_tier):
                     escalate("%d steps without finishing" % steps_here)
         else:
             if not run.stop:
-                run.emit("error", text="Stopped after %d steps (max_steps)." % cfg["max_steps"])
+                run.emit("error", text="Stopped after %d steps (max_steps)." % max_steps_eff)
                 status = "max_steps"
     except Exception as e:
         run.emit("error", text="Agent crashed: %s" % e)

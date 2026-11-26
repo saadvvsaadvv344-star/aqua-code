@@ -49,6 +49,8 @@ The chat bar (next to Auto / Lite / Pro and the approval mode) has a **working-l
 
 On Windows you can switch levels at any time. On macOS and Linux a lowered priority cannot be raised again without administrator rights, so going back up from Low needs an app restart there. Heavy jobs such as rendering the explainer video run with their own limits (see `video/README.md`).
 
+**The level also sets how long the AI keeps working.** Low: it stops as soon as the task is done. Balanced: after it says "done" it keeps testing, adding detail and polishing for up to **30 minutes**. Max: up to **1 hour** (up to 400 steps), in rounds (test and fix, add depth, polish, code quality). It stops earlier if two rounds in a row change nothing, and you can press Stop at any time. Long runs shorten old tool output automatically so the model's memory does not overflow. Remember that free API limits still apply: a long Max run uses many requests, so connect several free keys.
+
 ### Plain mode (remove the liquid glass)
 
 Settings, **Glass quality**: **Full** (real refraction), **Lite** (soft glass, default) or **Off** (flat panels, no blur, no animation, no effects: fastest). **Water intro animation** can be switched off separately.
