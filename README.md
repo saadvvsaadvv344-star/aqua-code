@@ -33,7 +33,7 @@ It opens as its own desktop window (Edge, Chrome, Brave or Chromium in app mode:
 
 ### Working level (how hard Aqua works on your PC)
 
-The right panel (and Settings) has **Working level: Low, Balanced or High**.
+The chat bar (next to Auto / Lite / Pro and the approval mode) has **Working level: Low, Balanced or High**, and Settings has the same choice.
 
 | Level | What it does |
 | --- | --- |

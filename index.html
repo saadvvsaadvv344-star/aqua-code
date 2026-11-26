@@ -474,6 +474,7 @@ void main(){
 <symbol id="i-tablet" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M11 18h2"/></symbol>
 <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7.5" y="2.5" width="9" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
 <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+<symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/><circle cx="12" cy="17" r="1.2"/></symbol>
 <symbol id="i-logo" viewBox="0 0 24 24"><path d="M12 3 4 20h4l1.6-3.6h4.8L16 20h4L12 3Z"/><path d="M10.4 13.4h3.2"/></symbol>
 <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
 <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor"/></symbol>
@@ -531,6 +532,7 @@ void main(){
         <div class="comp-bar">
           <div class="tchips" id="tchips"></div>
           <select class="sel" id="appr" title="Approval mode"><option value="ask">Ask for every change</option><option value="edits">Auto edits, ask commands</option><option value="auto">Full auto</option></select>
+          <div class="tchips" id="lvChips"></div>
           <span class="grow"></span>
           <div class="fuse" id="sg"><button class="btn pill" id="escBtn" style="display:none"><svg class="i"><use href="#i-bolt"/></svg>Escalate now</button>
           <button class="send" id="send" title="Send"><svg class="i" style="width:22px;height:22px;stroke-width:2.4"><use href="#i-send"/></svg></button></div>
@@ -764,8 +766,6 @@ function renderRight(){
   let h='';
   if(S.budget!=='ok'||frac>=1)h+=`<div class="card" style="padding:0;border:0;background:none;box-shadow:none"><div class="warn bad">${ic('alert','width:15px;height:15px;vertical-align:-3px')} Budget reached. The agent will not call the API until you raise it in Settings.</div></div>`;
   else if(frac>=.8)h+=`<div class="card" style="padding:0;border:0;background:none;box-shadow:none"><div class="warn">${ic('alert','width:15px;height:15px;vertical-align:-3px')} ${Math.round(frac*100)}% of today's budget is used.</div></div>`;
-  {const lv=c.level||'balanced',cores=S.cores||1,cap=S.coreCap||cores;
-   h+=`<div class="card"><h3>Working level <span style="text-transform:none;letter-spacing:0;font-weight:500">${lv==='low'?cap+' of '+cores+' cores, low priority':'all '+cores+' cores'}</span></h3><div class="seg" id="lvSeg" style="width:100%">${['low','balanced','high'].map(k=>`<button data-l="${k}" class="${k===lv?'on':''}" style="flex:1;justify-content:center">${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}</div><div class="step-note" style="margin-top:10px">${{low:'Gentle: plain look, no animations, runs at low priority on a quarter of your cores.',balanced:'Soft glass, normal priority. Good for most PCs.',high:'Full liquid glass and full speed.'}[lv]}</div></div>`;}
   h+=`<div class="card"><h3>Connection</h3><div style="display:flex;align-items:center;gap:12px"><span class="kd ${prov().has_key?'ok':''}"></span><div style="flex:1;min-width:0"><b>${esc(prov().label)}</b><div class="mut" style="font-size:12px;font-family:Consolas,monospace">${prov().has_key?'Key saved '+esc(prov().key):'No key saved yet'}</div></div><button class="btn ghost" id="keyBtn">${prov().has_key?'Manage':'Add key'}</button></div></div>`;
   {const conn=Object.entries(c.providers).filter(([k,v])=>v.has_key&&k!==pid&&(v.free||c.failover_paid)).map(([k,v])=>v.label);
    h+=`<div class="card"><h3>If this AI runs out</h3><div class="step-note">${c.failover===false?'Automatic switching is <b style="color:var(--amber)">off</b> (turn it on in Settings).':conn.length?`Aqua switches by itself to: <b>${conn.map(esc).join(', ')}</b>, in that order.`:'No backup AI is connected yet. Add free keys (Groq, Cerebras, Mistral, OpenRouter...) so work never stops.'}</div><button class="btn ghost" id="bkBtn" style="margin-top:10px">${ic('plus')}Connect another AI</button></div>`;}
@@ -787,12 +787,19 @@ function renderRight(){
       <div class="row"><span>${x.rpm>0?`${rn} / ${x.rpm} per minute`:'rate limit: dynamic'}</span><span>${fn(m.in)} in - ${fn(m.out)} out</span></div></div></div>`}).join('')+`</div>`;
   h+=`<div class="card"><h3>How credit is saved</h3><div class="step-note">1. Every task starts on <b>${esc(t[Math.min(c.start_tier,t.length-1)].name)}</b>, the cheapest model.<br>2. After <b>${c.esc_errors}</b> failing steps in a row, <b>${c.esc_steps}</b> steps without finishing, a rate limit, or when the model asks, it hands over to the next tier with the full context.<br>3. It never goes above <b>${esc(t[Math.min(c.max_tier,t.length-1)].name)}</b> and never past your budget.<br>4. A syntax check after every file write catches weak output early.${c.auto_escalate?'':'<br><b style="color:var(--amber)">Auto-escalation is off.</b>'}</div></div>`;
   h+=`<div class="card"><h3>Account balance</h3>`+(S.balance?`<div class="step-note">${S.balance}</div>`:'')+`<button class="btn ghost" id="balBtn" style="margin-top:${S.balance?10:0}px">${ic('coin')}Check ${esc(prov().label)} balance</button></div>`;
-  $('#rbody').innerHTML=h;{const ls=$('#lvSeg');if(ls){ls.querySelectorAll('button').forEach(b=>b.onclick=()=>setLevel(b.dataset.l));thumb(ls,'lv')}}const kb=$('#keyBtn');if(kb)kb.onclick=()=>{prov().has_key?openSettings():openWelcome()};const bk=$('#bkBtn');if(bk)bk.onclick=()=>openWelcome();
+  $('#rbody').innerHTML=h;const kb=$('#keyBtn');if(kb)kb.onclick=()=>{prov().has_key?openSettings():openWelcome()};const bk=$('#bkBtn');if(bk)bk.onclick=()=>openWelcome();
   $('#balBtn').onclick=async()=>{const r=await api('/api/balance',{provider:pid});
     if(r.ok){const b=(r.data.balance_infos||[]).map(x=>`<b>${esc(x.currency)} ${esc(x.total_balance)}</b> (granted ${esc(x.granted_balance)}, topped up ${esc(x.topped_up_balance)})`).join('<br>');S.balance=b||'No balance information returned.';if(r.data.is_available===false)S.balance+='<br><span style="color:var(--red)">Account has insufficient balance.</span>'}
     else S.balance=esc(r.error||'Failed');renderRight()};
 }
-function render(){renderHead();renderSide();renderChips();renderRight();$('#wspath').textContent=S.cfg.workspace}
+function renderLevel(){
+  const box=$('#lvChips');if(!box||!S.cfg)return;const lv=S.cfg.level||'balanced',n=S.cores||1,cap=S.coreCap||n;
+  const tip={low:`Low: gentle, plain look, ${cap} of ${n} cores, lowest priority`,balanced:`Balanced: soft glass, all ${n} cores`,high:`High: full glass, full speed, all ${n} cores`};
+  box.title='Working level - '+tip[lv];
+  box.innerHTML=`<span style="display:inline-flex;align-items:center;padding:0 4px 0 8px;color:var(--mut)">${ic('gauge','width:17px;height:17px')}</span>`+['low','balanced','high'].map(k=>`<button data-l="${k}" class="${k===lv?'on':''}" title="${esc(tip[k])}"><i style="--c:${k==='low'?'var(--teal)':k==='balanced'?'var(--violet)':'var(--gold)'}"></i>${k[0].toUpperCase()+k.slice(1)}</button>`).join('');
+  box.querySelectorAll('button').forEach(b=>b.onclick=()=>setLevel(b.dataset.l));thumb(box,'lvchips');
+}
+function render(){renderLevel();renderHead();renderSide();renderChips();renderRight();$('#wspath').textContent=S.cfg.workspace}
 async function loadState(){const d=await api('/api/state');if(d.error)return;S.cfg=d.config;S.usage=d.usage;S.sessions=d.sessions;S.budget=d.budget;S.previewPort=d.preview_port;S.cores=d.cores;S.coreCap=d.core_cap;render()}
 
 /* ---------- file tree ---------- */
