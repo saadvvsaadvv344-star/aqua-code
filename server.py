@@ -2087,6 +2087,33 @@ def cloudflare_account(token):
     return None
 
 
+def cloudflare_diagnose(token, acct=None):
+    """Ask Cloudflare itself whether the token is valid, so the message says what to fix instead of just 'rejected'."""
+    def cf(path):
+        req = urllib.request.Request("https://api.cloudflare.com/client/v4" + path, headers={"Authorization": "Bearer " + token, "User-Agent": "aqua-code/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.status, json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                return e.code, json.loads(e.read().decode("utf-8"))
+            except Exception:
+                return e.code, {}
+        except Exception as e:
+            return 0, {"errors": [{"message": str(e)}]}
+    paths = ["/user/tokens/verify"] + (["/accounts/%s/tokens/verify" % acct] if acct else [])
+    for p in paths:
+        code, j = cf(p)
+        if code == 200 and (j.get("result") or {}).get("status") == "active":
+            return ("Cloudflare says the token itself is valid and active, so it is missing a permission or it belongs to a different account. "
+                    "Open dash.cloudflare.com/profile/api-tokens, edit the token and give it: Account > Workers AI > Read (and Edit), with your account chosen under Account Resources. "
+                    "Also check that the Account ID is the one from the same Cloudflare account.")
+        if code == 0:
+            return "Could not reach Cloudflare to check the token (network problem)."
+    return ("Cloudflare says this token is not valid at all: it was copied wrongly or cut short, it expired, or it was deleted. "
+            "Create a new token (dash.cloudflare.com/profile/api-tokens, Create Token, the Workers AI template) and copy it right away, because Cloudflare shows it only once.")
+
+
 def _label_of(pid):
     return load_cfg()["providers"][pid]["label"]
 
@@ -2122,6 +2149,9 @@ def connect_key(kind, ident, key):
                 else:                                        # only a token was pasted: ask Cloudflare which account it belongs to
                     acct = cloudflare_account(key)
                     if not acct:
+                        diag = cloudflare_diagnose(key)
+                        if diag.startswith("Cloudflare says this token is not valid"):
+                            return {"service": prov["label"], "ok": False, "detail": diag}      # no point asking for an Account ID
                         return {"service": prov["label"], "ok": False, "need": "account_id", "detail": "Cloudflare did not tell which account this token belongs to, so type your Account ID. Open dash.cloudflare.com: the 32 letters and numbers in the address bar after the site name are your Account ID."}
                     new_base = old_base.replace("{account_id}", acct)
             else:
@@ -2141,7 +2171,12 @@ def connect_key(kind, ident, key):
 
             def rejected(err):
                 restore()
-                return {"service": prov["label"], "ok": False, "detail": "The service rejected this key (%s). Nothing was changed. %s" % (err, hint)}
+                if pid == "cloudflare":
+                    am = re.search(r"/accounts/([0-9a-fA-F]{32})/", new_base)
+                    hint2 = cloudflare_diagnose(key, am.group(1) if am else None)
+                else:
+                    hint2 = hint
+                return {"service": prov["label"], "ok": False, "detail": "The service rejected this key (%s). Nothing was changed. %s" % (str(err)[:160], hint2)}
             if pid == "openrouter":
                 try:
                     openrouter_autoconfig()
