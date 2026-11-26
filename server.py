@@ -12,6 +12,8 @@ import re
 import subprocess
 import sys
 import threading
+import platform
+import signal
 import time
 import traceback
 import urllib.error
@@ -40,6 +42,7 @@ DEFAULT_CONFIG = {
     "esc_steps": 8,               # steps on one tier without finishing before escalating
     "sticky_tier": False,         # keep the stronger tier for the next message
     "failover": True,             # when an AI runs out of credit or hits its limit, switch to the next connected AI
+    "no_key_fallback": True,      # when no API key is saved, use the free anonymous models that still work without one
     "failover_paid": False,       # ...but only to FREE providers unless this is on (so it never spends money by surprise)
     "max_steps": 40,
     "daily_budget": 1.0,          # USD, 0 = unlimited
@@ -205,7 +208,7 @@ def _apply_config_update(new):
     for k in ("provider", "workspace", "approval"):
         if isinstance(new.get(k), str) and new[k].strip():
             cfg[k] = new[k].strip()
-    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid"):
+    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback"):
         if k in new:
             cfg[k] = bool(new[k])
     for k in NUM_KEYS:
@@ -744,6 +747,13 @@ def out_of_credit(e):
 def agent_loop(run, user_text, forced_tier):
     sess = run.sess
     cfg = load_cfg()
+    notice = None
+    if cfg.get("no_key_fallback", True) and not any(has_access(v) for v in cfg["providers"].values()):
+        first = nokey_enable()
+        if first:
+            cfg = load_cfg()
+            notice = ("No API key is saved yet, so Aqua is using %s (%s), a free anonymous model. It is slow and your prompts are public. "
+                      "Add a free key for faster, private use." % (cfg["providers"][first]["label"], cfg["providers"][first]["tiers"][0]["model"]))
     pid = cfg["provider"]
     plabel = cfg["providers"][pid]["label"]
     tiers = cfg["providers"][pid]["tiers"]
@@ -759,6 +769,8 @@ def agent_loop(run, user_text, forced_tier):
     messages = sess["messages"]
     messages.append({"role": "user", "content": user_text})
     run.emit("user", text=user_text)
+    if notice:
+        run.emit("notice", text=notice)
     steps_here = errs = 0
     sigs = []
     run_cost = 0.0
@@ -1060,6 +1072,21 @@ def add_custom_provider(label, base):
     return pid
 
 
+def nokey_enable():
+    """Switch on every provider that needs no key and make the first one the active AI. Returns its id (or None)."""
+    first = None
+    with _lock:
+        cfg = load_cfg()
+        for k, v in cfg["providers"].items():
+            if v.get("nokey"):
+                v["enabled"] = True
+                first = first or k
+        if first:
+            cfg["provider"] = first
+            save_cfg(cfg)
+    return first
+
+
 def set_provider_enabled(pid, on):
     with _lock:
         cfg = load_cfg()
@@ -1261,7 +1288,7 @@ def _kill(proc):
         if os.name == "nt":
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=10)
         else:
-            proc.terminate()
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
     except Exception:
         pass
 
@@ -1299,7 +1326,7 @@ def tool_start_server(run, ws, a):
     if DENY.search(cmd):
         raise ToolErr("Blocked: this command is not allowed for safety.")
     argv = ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd] if os.name == "nt" else ["bash", "-lc", cmd]
-    kw = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {}
+    kw = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
     env = dict(os.environ, PYTHONUNBUFFERED="1", FORCE_COLOR="0", NO_COLOR="1")
     proc = subprocess.Popen(argv, cwd=ws, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env, **kw)
     log = collections.deque(maxlen=300)
@@ -1393,7 +1420,7 @@ class H(BaseHTTPRequestHandler):
                 lst = sorted(({"id": s["id"], "title": s["title"], "created": s["created"], "cost": s.get("cost", 0.0)}
                               for s in sessions.values()), key=lambda s: -s["created"])
                 active = {r.sess["id"]: r.id for r in runs.values() if not r.done}
-                return self._send(200, {"config": masked_cfg(cfg), "usage": usage_snapshot(cfg), "sessions": lst, "preview_port": PREVIEW_PORT,
+                return self._send(200, {"config": masked_cfg(cfg), "usage": usage_snapshot(cfg), "sessions": lst, "preview_port": PREVIEW_PORT, "platform": sys.platform, "machine": platform.machine(),
                                         "active": active, "budget": budget_state(cfg)})
             if u.path == "/api/session":
                 s = sessions.get(q.get("id"))
@@ -1498,6 +1525,11 @@ class H(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, "id": pid, "config": masked_cfg(load_cfg())})
                 except ValueError as e:
                     return self._send(200, {"ok": False, "error": str(e)})
+            if u.path == "/api/nokey/enable":
+                first = nokey_enable()
+                if not first:
+                    return self._send(200, {"ok": False, "error": "No anonymous model is available."})
+                return self._send(200, {"ok": True, "config": masked_cfg(load_cfg())})
             if u.path == "/api/provider/enable":
                 try:
                     return self._send(200, set_provider_enabled(b.get("id"), b.get("on", True)))

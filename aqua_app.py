@@ -57,12 +57,14 @@ def find_browser():
                 cands += [os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe"),
                           os.path.join(base, "Google", "Chrome", "Application", "chrome.exe")]
     else:
-        for n in ("microsoft-edge", "google-chrome", "chromium", "chromium-browser"):
+        for n in ("microsoft-edge", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser"):
             p = shutil.which(n)
             if p:
                 cands.append(p)
         cands += ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
+                  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+                  "/Applications/Chromium.app/Contents/MacOS/Chromium"]
     return next((c for c in cands if os.path.exists(c)), None)
 
 

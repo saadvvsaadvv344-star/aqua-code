@@ -9,23 +9,39 @@ Aqua Code is a local, single-file-server coding agent with a liquid-glass interf
 - No dependencies: Python 3.9+ standard library only.
 - Runs on `127.0.0.1`. Your key never leaves your machine except to call the provider you chose.
 
+## Install
+
+Pick whichever is easiest. Nothing else to download: Python 3.9 or newer is the only requirement, and the app has no packages.
+
+| | |
+| --- | --- |
+| **Download button** | [Download the ZIP](https://github.com/saadvvsaadvv344-star/aqua-code/archive/refs/heads/main.zip), unzip it, then double-click `Start Aqua Code.bat` (Windows) or `Start Aqua Code.command` (Mac). Releases also has a ready-made `aqua-code.zip`. |
+| **Windows (PowerShell)** | `irm https://raw.githubusercontent.com/saadvvsaadvv344-star/aqua-code/main/install.ps1 \| iex` |
+| **macOS (Intel and Apple Silicon) and Linux (Terminal)** | `curl -fsSL https://raw.githubusercontent.com/saadvvsaadvv344-star/aqua-code/main/install.sh \| bash` |
+| **git** | `git clone https://github.com/saadvvsaadvv344-star/aqua-code.git && cd aqua-code && python3 aqua_app.py` |
+
+The installers put Aqua Code in `~/AquaCode` (or `%USERPROFILE%\AquaCode`), add a Desktop launcher, and keep your keys, chats and workspace when you run them again to update.
+
+It opens as its own desktop window (Edge, Chrome, Brave or Chromium in app mode: no tabs, no address bar) and stops its server when you close the window. If no Chromium browser is installed (for example only Safari or Firefox), it opens in a normal browser tab instead. You can also run only the server: `python3 server.py`, then open http://127.0.0.1:8765.
+
+### macOS notes (Intel and Apple Silicon)
+
+- Install Python 3.9+ from https://www.python.org/downloads/ (or `brew install python`). The app itself needs nothing else.
+- Intel Macs are fully supported in design: there is no native code, and the glass effects default to **Lite**. If it ever feels heavy, open Settings and set **Glass quality** to **Off** for a plain flat look.
+- If double-clicking `Start Aqua Code.command` is blocked, run `chmod +x "Start Aqua Code.command"` once, or just run `python3 aqua_app.py` in Terminal.
+- I developed and tested this on Windows 11. The macOS and Linux paths are written to the same standard-library code and checked for Python 3.9 compatibility, but I could not run them on a real Mac. Please open an issue if something misbehaves.
+
+### Plain mode (remove the liquid glass)
+
+Settings, **Glass quality**: **Full** (real refraction), **Lite** (soft glass, default) or **Off** (flat panels, no blur, no animation, no effects: fastest). **Water intro animation** can be switched off separately.
+
 ## Quick start
 
-```bash
-git clone https://github.com/saadvvsaadvv344-star/aqua-code.git
-cd aqua-code
-python aqua_app.py
-```
+1. Start it (see Install).
+2. Paste a free API key on the first screen, or press **Try without a key**.
+3. Describe what you want built.
 
-It opens as its own desktop window (Edge or Chrome in app mode: no tabs, no address bar) and shuts the server down when you close it. Paste your API key on the first screen and describe what you want built.
-
-- Windows: double-click `Start Aqua Code.bat` (no console window).
-- macOS/Linux: `./start.sh`.
-- Browser only: `python server.py`, then open http://127.0.0.1:8765.
-
-Get a key:
-- DeepSeek: https://platform.deepseek.com
-- Gemini: https://aistudio.google.com (has a free tier)
+Without any key, Aqua uses the one free model that still answers anonymously (LLM7, gpt-oss:20b). It is slow, rate limited, and your prompts are public, so add a free key as soon as you can. You can turn this fallback off in Settings.
 
 ## Free API keys
 

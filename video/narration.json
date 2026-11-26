@@ -13,7 +13,7 @@
     "Now the tutorial. How do you get free credit? Start with the GitHub list called awesome free LLM APIs. It collects providers with a permanent free tier.",
     "Step one. Pick a provider. Gemini is the easiest. Open Google AI Studio, sign in, and click Create API key. No credit card is needed.",
     "Step two. Do the same for Groq, Cerebras, Mistral, or OpenRouter. Each site has a keys page with a create button, and every key is one more backup.",
-    "Some providers need no key at all, like Kilo, LLM seven, OVH, and Pollinations. Just press Enable. They are anonymous, so use them only as a last backup.",
+    "Some lists say a few providers need no key, but today only one still answers anonymously: LLM seven, with the gpt oss twenty B model. Press Enable, or Try without a key. It is anonymous, so use it only as a last backup.",
     "Step three. Copy the key, open Aqua Code, press the AI button, pick the provider, paste the key, and press Connect.",
     "Aqua tests the key and checks the model names for you. When one free limit runs out, it moves to the next key by itself.",
     "Now, every feature. Aqua Code is free, runs on your own PC, and changes apply live, with no restart.",
@@ -23,7 +23,7 @@
     "Free mode counts cost as zero and respects every limit. When one is used up, Aqua tries other models, then the next connected AI. It only switches to paid providers if you allow it.",
     "It always asks before it edits a file or runs a command. Choose to be asked every time, to auto approve edits, or full auto. Dangerous commands are blocked.",
     "The agent works only inside your workspace folder, and you can browse its files. Every task is saved as a chat. In Settings you edit models, prices, budgets, and add any OpenAI compatible provider.",
-    "Dark and light themes, liquid glass buttons that melt together, and a faster mode for slower PCs. It opens as its own desktop app, and the whole project is ready for GitHub.",
+    "Dark and light themes, liquid glass buttons that melt together, and one switch to turn the glass off completely on slower PCs. It opens as its own desktop app, with installers for Windows, Mac, and Linux, and the project is on GitHub.",
     "A few honest notes. Free limits change. Free prompts may be used to improve models, so never send secrets. And if Google says your project is not eligible, just use Groq, Cerebras, or Mistral.",
     "That's Aqua Code. Free, fast, and yours. Made by Saad."
   ]

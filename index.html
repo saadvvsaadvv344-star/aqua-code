@@ -329,6 +329,20 @@ pre.out{border-radius:12px;background:var(--code);margin-top:8px}
 #pvBtn.on{background:var(--g1);border-color:var(--gb)}
 .pv-drag iframe{pointer-events:none}
 .mtag{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);padding:2px 6px;animation:rise .3s ease both}
+/* ---- glass OFF: plain flat look, no blur, no animation, no effects ---- */
+[data-fx=off]{--solid:#16181d;--g1:rgba(255,255,255,.06);--g2:rgba(255,255,255,.03);--gb2:rgba(255,255,255,.13)}
+[data-theme=light][data-fx=off]{--solid:#f3f4f7;--g1:rgba(0,0,0,.045);--g2:rgba(0,0,0,.02);--gb2:rgba(0,0,0,.11)}
+[data-fx=off] .bg,[data-fx=off] .grain{display:none}
+[data-fx=off] body{background:var(--solid)}
+[data-fx=off] .glass,[data-fx=off] .lg,[data-fx=off] .modal.glass,[data-fx=off] .aimenu{background:var(--solid)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important}
+[data-fx=off] .card,[data-fx=off] .bub.ai,[data-fx=off] .msg.ai .bub{backdrop-filter:none!important;box-shadow:none!important}
+[data-fx=off] .glass::before,[data-fx=off] .glass::after,[data-fx=off] .btn::before,[data-fx=off] .btn::after,[data-fx=off] .send::before,[data-fx=off] .send::after,[data-fx=off] .tchips button::before,[data-fx=off] .tchips button::after,[data-fx=off] .seg button::before,[data-fx=off] .seg button::after{display:none!important}
+[data-fx=off] .fuse-bg,[data-fx=off] .rip{display:none!important}
+[data-fx=off] .fuse>.btn.pill,[data-fx=off] .fuse>.btn.ghost{background:var(--g1)!important;border:1px solid var(--gb2)!important}
+[data-fx=off] .col,[data-fx=off] .msg,[data-fx=off] .tool,[data-fx=off] .modal,[data-fx=off] .appr,[data-fx=off] .esc,[data-fx=off] .aimenu,[data-fx=off] .pvp,[data-fx=off] .hero,[data-fx=off] .toast{animation:none!important}
+[data-fx=off] .btn,[data-fx=off] .send,[data-fx=off] .si,[data-fx=off] .sug button,[data-fx=off] .wp,[data-fx=off] .seg .thumb,[data-fx=off] .tchips .thumb{transition:none!important}
+[data-fx=off] .btn:hover,[data-fx=off] .send:hover{transform:none!important}
+[data-fx=off] .logo{box-shadow:none!important}
 .mbtn{display:none}
 @media (max-width:1240px){.app{grid-template-columns:260px minmax(0,1fr)}.right{position:fixed;right:14px;top:14px;bottom:14px;width:min(360px,calc(100vw - 28px));z-index:30;transform:translateX(120%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}.right.show{transform:none}.mbtn.r{display:inline-flex}}
 @media (max-width:860px){.app{grid-template-columns:1fr}.left{position:fixed;left:14px;top:14px;bottom:14px;width:min(300px,calc(100vw - 28px));z-index:30;transform:translateX(-120%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}.left.show{transform:none}.mbtn{display:inline-flex}.sug{grid-template-columns:1fr}.g2,.g3{grid-template-columns:1fr}.trow{grid-template-columns:1fr 1fr}.head{flex-wrap:wrap}}
@@ -338,6 +352,7 @@ pre.out{border-radius:12px;background:var(--code);margin-top:8px}
 <div id="intro"><canvas id="introc"></canvas><div class="ptxt">Made by Saad<small>AQUA CODE</small></div><button id="introSkip">Skip</button></div>
 <script>
 (function(){
+  try{const fxm=localStorage.getItem('ac-fx')||'lite';document.documentElement.dataset.fx=fxm;if(fxm==='off'||localStorage.getItem('ac-intro')==='off'){const b0=document.getElementById('intro');if(b0)b0.remove();return}}catch(e){}
   const box=document.getElementById('intro'),cv=document.getElementById('introc');
   let finished=false,gl=null;
   const finish=()=>{if(finished)return;finished=true;box.classList.add('out');setTimeout(()=>{try{const x=gl&&gl.getExtension('WEBGL_lose_context');if(x)x.loseContext()}catch(e){}box.remove()},750)};
@@ -629,6 +644,7 @@ function addModelTag(ev){
 function addFailover(ev){
   add(el(`<div class="arrow"><span class="chip" style="color:var(--amber)"><i></i>${esc(ev.frm)}</span>${ic('arrow')}<span class="chip" style="color:var(--green)"><i></i>${esc(ev.to)}</span></div><div><b>Switching to another AI</b><small>${esc(ev.reason)} - now using ${esc(ev.to)} (${esc(ev.model)})</small></div>`,'esc'));
 }
+function addNotice(t){add(el(`${ic('alert')}<div>${esc(t)}</div>`,'esc'))}
 function addError(t){
   const gl=/free tier is not available|not eligible for the Gemini/i.test(t);
   const d=el(`${ic('alert')}<div style="white-space:pre-wrap">${esc(t)}${gl?'<div style="margin-top:10px"><button class="btn ghost" data-or>Use free models (OpenRouter)</button></div>':''}</div>`,'err');
@@ -662,6 +678,7 @@ function handle(ev){
     case 'escalate':clearStatus();addEscalate(ev);if(S.cur)S.cur.tier=ev.to;renderRight();break;
     case 'usage':S.usage=ev.usage;S.sessCost=ev.session_cost;renderRight();renderHead();break;
     case 'preview':if(ev.t>Date.now()/1000-45&&(!ev.auto||!PV.closedByUser)&&!(ev.auto&&PV.url===ev.url))pvGo(ev.url);break;
+    case 'notice':clearStatus();addNotice(ev.text);break;
     case 'error':clearStatus();addError(ev.text);break;
     case 'done':clearStatus();addDone(ev);if(ev.usage)S.usage=ev.usage;S.sessCost=ev.session_cost;
       if(S.runId){S.runId=null;if(S.es){S.es.close();S.es=null}}S.cur=null;setRunning(false);loadState();refreshTreeSoon();break;
@@ -683,7 +700,7 @@ function setRunning(r){
 async function send(){
   if(S.runId){await api('/api/stop',{run:S.runId});toast('Stopping...');return}
   const ta=$('#ta');const text=ta.value.trim();if(!text)return;
-  if(!prov().has_key){openWelcome();return}
+  if(!Object.values(S.cfg.providers).some(p=>p.has_key)&&S.cfg.no_key_fallback===false){openWelcome();return}
   const r=await api('/api/run',{session:S.sid,text,tier:S.forced});
   if(r.error){toast(r.error);return}
   ta.value='';autoGrow();S.sid=r.session;S.cur=null;attach(r.run,0);
@@ -792,7 +809,7 @@ function collect(){
   if(g('f_base')){p.base=g('f_base').value;p.free=g('f_free').checked}
   if(g('tiers')){p.tiers=[...m.querySelectorAll('.trow')].map(r=>{const v=n=>r.querySelector('[data-k="'+n+'"]').value;return{name:v('name'),model:v('model'),in:+v('in')||0,cache:+v('cache')||0,out:+v('out')||0,rpm:+v('rpm')||0,rpd:+v('rpd')||0}})}
   if(g('f_ws')){draft.workspace=g('f_ws').value;draft.approval=g('f_appr').value;draft.daily_budget=+g('f_day').value||0;draft.total_budget=+g('f_tot').value||0;
-    draft.auto_escalate=g('f_auto').checked;draft.sticky_tier=g('f_sticky').checked;draft.failover=g('f_fo').checked;draft.failover_paid=g('f_fop').checked;draft.start_tier=+g('f_start').value||0;draft.max_tier=+g('f_max').value;draft.esc_errors=+g('f_errs').value||2;draft.esc_steps=+g('f_steps').value||8;draft.max_steps=+g('f_ms').value||40}
+    draft.auto_escalate=g('f_auto').checked;draft.sticky_tier=g('f_sticky').checked;draft.failover=g('f_fo').checked;draft.failover_paid=g('f_fop').checked;draft.no_key_fallback=g('f_nk').checked;draft.start_tier=+g('f_start').value||0;draft.max_tier=+g('f_max').value;draft.esc_errors=+g('f_errs').value||2;draft.esc_steps=+g('f_steps').value||8;draft.max_steps=+g('f_ms').value||40}
 }
 /* keys are only ever sent by the key manager (never as a side effect of saving other settings) */
 function noKeys(o){const c=JSON.parse(JSON.stringify(o));Object.values(c.providers||{}).forEach(p=>{delete p.key;delete p.has_key});return c}
@@ -826,12 +843,14 @@ function drawSettings(){
    <label class="sw"><input id="f_sticky" type="checkbox" ${draft.sticky_tier?'checked':''}><i></i>Stay on the stronger model for the next message (otherwise reset to cheap)</label>
    <label class="sw"><input id="f_fo" type="checkbox" ${draft.failover!==false?'checked':''}><i></i>When an AI runs out of credit or hits its limit, switch to the next connected AI</label>
    <label class="sw"><input id="f_fop" type="checkbox" ${draft.failover_paid?'checked':''}><i></i>Also allow switching to paid providers (can spend money; off = free ones only)</label>
+   <label class="sw"><input id="f_nk" type="checkbox" ${draft.no_key_fallback!==false?'checked':''}><i></i>With no API key saved, use the free anonymous model (LLM7). It is slow and your prompts are public.</label>
    <div class="g3"><label class="fld">Start tier<select id="f_start">${p.tiers.map((t,i)=>`<option value="${i}" ${draft.start_tier===i?'selected':''}>${i+1}. ${esc(t.name)}</option>`).join('')}</select></label>
    <label class="fld">Highest allowed tier<select id="f_max">${p.tiers.map((t,i)=>`<option value="${i}" ${Math.min(draft.max_tier,n-1)===i?'selected':''}>${i+1}. ${esc(t.name)}</option>`).join('')}</select></label>
    <label class="fld">Max steps per task<input id="f_ms" type="number" value="${draft.max_steps}"></label>
    <label class="fld">Escalate after N failing steps<input id="f_errs" type="number" value="${draft.esc_errors}"></label><label class="fld">...or N steps on one tier<input id="f_steps" type="number" value="${draft.esc_steps}"></label></div></div></div>
   <div class="sec"><h3>${ic('folder')}Agent</h3><div class="g2"><label class="fld">Workspace folder (the agent can only touch this)<input id="f_ws" value="${esc(draft.workspace)}"></label>
-   <label class="fld">Glass quality (this browser)<select id="f_fx"><option value="full" ${FX.mode==='full'?'selected':''}>Full: refraction and animated background (heavy)</option><option value="lite" ${FX.mode==='lite'?'selected':''}>Lite: soft glass, smooth and fast (recommended)</option></select></label>
+   <label class="fld">Glass quality (this browser)<select id="f_fx"><option value="full" ${FX.mode==='full'?'selected':''}>Full: refraction and animated background (heavy)</option><option value="lite" ${FX.mode==='lite'?'selected':''}>Lite: soft glass, smooth and fast (recommended)</option><option value="off" ${FX.mode==='off'?'selected':''}>Off: plain flat look, no liquid glass (fastest)</option></select></label>
+   <label class="fld">Water intro animation (this browser)<select id="f_intro"><option value="on" ${(()=>{try{return localStorage.getItem('ac-intro')!=='off'?'selected':''}catch(e){return'selected'}})()}>On</option><option value="off" ${(()=>{try{return localStorage.getItem('ac-intro')==='off'?'selected':''}catch(e){return''}})()}>Off</option></select></label>
    <label class="fld">Approval mode<select id="f_appr"><option value="ask" ${draft.approval==='ask'?'selected':''}>Ask for every change</option><option value="edits" ${draft.approval==='edits'?'selected':''}>Auto edits, ask for commands</option><option value="auto" ${draft.approval==='auto'?'selected':''}>Full auto</option></select></label></div></div>
   </div><div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn gold" id="saveCfg">${ic('check')}Save</button></div>`);
   const m=$('#modal');
@@ -876,7 +895,7 @@ function drawSettings(){
     const saved=await api('/api/config',noKeys({providers:{[dtab]:draft.providers[dtab]}}));if(saved.config)S.cfg=saved.config;
     const r=await api('/api/test',{provider:dtab,tier:+b.dataset.test});
     tr.style.color=r.ok?'var(--green)':'var(--red)';tr.textContent=r.ok?`Connected to ${r.model} in ${r.ms} ms${r.reply?' - it replied "'+r.reply+'"':''}`:(r.error||'Failed');renderHead();b.classList.remove('busy')});
-  $('#saveCfg').onclick=async()=>{collect();const fx=$('#f_fx');if(fx){FX.mode=fx.value;try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}FX.apply()}const r=await api('/api/config',noKeys(draft));if(r.error){toast(r.error);return}S.cfg=r.config;S.usage=r.usage;closeModal();toast('Settings saved');render();loadTree();if(!S.sid)showHero()};
+  $('#saveCfg').onclick=async()=>{collect();const fx=$('#f_fx'),itv=$('#f_intro');let reload=false;if(fx){const old=FX.mode;FX.mode=fx.value;try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}if((old==='off')!==(FX.mode==='off'))reload=true;FX.apply()}if(itv){try{localStorage.setItem('ac-intro',itv.value)}catch(e){}}const r=await api('/api/config',noKeys(draft));if(r.error){toast(r.error);return}S.cfg=r.config;S.usage=r.usage;closeModal();toast('Settings saved');if(reload){setTimeout(()=>location.reload(),350);return}render();loadTree();if(!S.sid)showHero()};
 }
 
 /* ---------- first run: ask for the API key ---------- */
@@ -913,7 +932,7 @@ function openWelcome(prefer){
       <div class="guide"><b>How to get your ${esc(S.cfg.providers[pick].label)} key</b><ol>${inf.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><button class="btn ghost" id="w_open">${ic('arrow')}Open the key page</button><p>${esc(inf.note||'')}</p></div>
       ${S.cfg.providers[pick].nokey?`<div class="guide"><b>No key needed</b><p style="margin-top:6px">This service works without an account. Your prompts go to it anonymously, so do not send secrets.</p></div>`:`<label class="fld">${esc(S.cfg.providers[pick].label)} API key<input id="w_key" type="password" autocomplete="off" placeholder="Paste your key here"></label>`}
       <div id="w_msg" style="font-size:12.5px;min-height:18px;color:${bad?'var(--red)':'var(--mut)'}">${esc(msg||'')}</div></div>
-      <div class="modal-f">${showSkip?'<button class="btn ghost" id="w_skip">Continue anyway</button>':''}<button class="btn gold" id="w_go">${ic('check')}${S.cfg.providers[pick].nokey?'Enable':'Connect'}</button></div>`;
+      <div class="modal-f">${showSkip?'<button class="btn ghost" id="w_skip">Continue anyway</button>':''}${S.cfg.no_key_fallback!==false&&Object.values(S.cfg.providers).some(p=>p.nokey)?'<button class="btn ghost" id="w_nokey">Try without a key</button>':''}<button class="btn gold" id="w_go">${ic('check')}${S.cfg.providers[pick].nokey?'Enable':'Connect'}</button></div>`;
     box.querySelectorAll('.wp').forEach(b=>b.onclick=()=>{pick=b.dataset.p;draw()});
     const wo=$('#w_open');if(inf.url)wo.onclick=()=>window.open(inf.url,'_blank','noopener');else wo.style.display='none';
     const go=async()=>{
@@ -938,6 +957,7 @@ function openWelcome(prefer){
     };
     $('#w_go').onclick=go;const wk=$('#w_key');if(wk)wk.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
     const sk=$('#w_skip');if(sk)sk.onclick=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
+    const nk=$('#w_nokey');if(nk)nk.onclick=async()=>{nk.classList.add('busy');const r=await api('/api/nokey/enable',{});nk.classList.remove('busy');if(!r.config){draw(r.error||'No anonymous model is available right now.',true);return}S.cfg=r.config;w.classList.remove('show');toast('Using '+S.cfg.providers[S.cfg.provider].label+' without a key. Slow, and prompts are public.');S.forced='auto';render();if(!S.sid)showHero()};
     if(!msg)setTimeout(()=>{const k=$('#w_key');if(k)k.focus()},50);
   };
   w.classList.add('show');draw();
