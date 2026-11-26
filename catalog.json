@@ -216,7 +216,7 @@
         "steps": [
           "Create a free Cloudflare account and copy your Account ID.",
           "Create an API token with the Workers AI permission.",
-          "Paste the token below, then in Settings replace {account_id} in the endpoint with your Account ID."
+          "Paste your Account ID, a colon, then the token, like  ACCOUNTID:TOKEN  (in Paste keys write  cloudflare: ACCOUNTID:TOKEN). Aqua puts the Account ID in the address for you."
         ],
         "note": "Some models need a paid plan."
       }

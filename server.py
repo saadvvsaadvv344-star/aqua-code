@@ -245,7 +245,12 @@ def _apply_config_update(new):
             cur["base"] = pv["base"].strip().rstrip("/")
         key = pv.get("key")
         if isinstance(key, str) and not key.startswith("****"):
-            cur["key"] = key.strip()
+            k2 = clean_key(key)
+            mm = re.match(r"^([0-9a-fA-F]{32})[:\s]+(\S+)$", k2)
+            if "{account_id}" in cur.get("base", "") and mm:           # Cloudflare: ACCOUNTID:TOKEN fills the blank in the address
+                cur["base"] = cur["base"].replace("{account_id}", mm.group(1))
+                k2 = mm.group(2)
+            cur["key"] = k2
         if isinstance(pv.get("tiers"), list) and pv["tiers"]:
             tiers = []
             for t in pv["tiers"][:6]:
@@ -1773,7 +1778,7 @@ def list_models(pid):
     try:
         j = http_json(prov["base"].rstrip("/") + "/models", auth_key(prov), method="GET", timeout=25)
     except LLMError as e:
-        return {"ok": False, "error": friendly(e.msg)}
+        return {"ok": False, "error": friendly(e.msg), "status": e.status}
     rows = j.get("data") if isinstance(j, dict) else j
     ids = sorted({_norm_id(m["id"]) for m in (rows or []) if isinstance(m, dict) and m.get("id")})
     return {"ok": True, "ids": ids}
@@ -1972,27 +1977,67 @@ def resolve_service(name, key, cfg):
     return None
 
 
+KEY_HINTS = {
+    "cloudflare": "Cloudflare needs two things: a token with the Workers AI permission and your Account ID. Write the line as  cloudflare: ACCOUNTID:TOKEN  (the Account ID is on the Cloudflare dashboard home page).",
+    "github": "Create a personal access token and allow the Models permission.",
+    "huggingface": "Create a token that has the permission to make calls to Inference Providers.",
+    "mistral": "In the Mistral console finish choosing the free Experiment plan first. A new key only works after that.",
+    "cohere": "Use a Trial key from the Cohere dashboard.",
+    "gemini": "Create the key in Google AI Studio (aistudio.google.com/app/apikey), not in Google Cloud.",
+    "nvidia": "The key starts with nvapi-. You must have joined the free NVIDIA Developer Program.",
+    "groq": "Create the key at console.groq.com/keys and copy all of it.",
+    "cerebras": "Create the key at cloud.cerebras.ai and copy all of it.",
+    "openrouter": "The key starts with sk-or-v1-. Copy all of it.",
+    "zai": "Use a key from open.bigmodel.cn (the international site z.ai uses a different address).",
+    "modelscope": "Use the access token from modelscope.cn, and link your Alibaba Cloud account if it asks.",
+    "siliconflow": "If this fails try the international address api.siliconflow.com in Settings.",
+}
+
+
+def clean_key(s):
+    """Fix the usual copy and paste mistakes: invisible characters, quotes, a leading 'Bearer ', 'api_key=' or trailing commas."""
+    s = re.sub("[​‌‍﻿ ⁠]", "", str(s or ""))
+    s = s.strip().strip("\"'`")
+    s = re.sub(r"^(authorization\s*:\s*)?bearer\s+", "", s, flags=re.I)
+    s = re.sub(r"^[A-Za-z_]*api[_-]?key\s*[:=]\s*", "", s, flags=re.I)
+    return s.strip().strip("\"'`").strip(" ,;")
+
+
 def parse_key_lines(text):
-    """Yields (name_or_None, key). Accepts one key per line, 'name: key', or several keys on a line separated by spaces or commas."""
+    """Yields (name_or_None, key). Accepts one key per line, 'name: key', 'name: accountid:token' or several keys on a line separated by spaces or commas."""
     out = []
     for raw in str(text or "").splitlines()[:60]:
-        line = raw.strip().strip("\"'")
+        line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        m = re.match(r"^([A-Za-z][\w .+()-]{1,30}?)\s*[:=]\s*([^\s,;]{12,})$", line)
+        line = re.sub("[​‌‍﻿ ⁠]", "", line).strip("\"'`")
+        line = re.sub(r"(?i)^(.{1,32}?[:=]\s*)[\"'`]?bearer\s+", r"\1", line)          # 'name: Bearer KEY' -> 'name: KEY'
+        m = re.match(r"^([A-Za-z][\w .+()-]{1,30}?)\s*[:=]\s*[\"'`]?([^\s,;]{12,})(?:[ \t]+([^\s,;]{12,}))?$", line)
         if m:
-            out.append((m.group(1).strip(), m.group(2).strip("\"'")))
+            k = clean_key(m.group(2))
+            if m.group(3):
+                k = k + ":" + clean_key(m.group(3))
+            name = m.group(1).strip()
+            if re.fullmatch(r"(?i)(x-)?(api[ _-]?)?(key|token|secret|authorization|bearer)", name):
+                name = None                                                              # 'api_key=KEY' names no service
+            out.append((name, k))
             continue
         for tok in re.split(r"[\s,;]+", line):
-            tok = tok.strip("\"'")
+            tok = clean_key(tok)
             if len(tok) >= 12:
                 out.append((None, tok))
     return out[:30]
 
 
+def _label_of(pid):
+    return load_cfg()["providers"][pid]["label"]
+
+
 def connect_key(kind, ident, key):
-    """Saves one key, picks its models, and tests the first one. Never returns or logs the key."""
+    """Saves one key, picks its models, and tests it for real. A key is judged by whether a request works, not by whether the
+    service lists its models. A wrong key never replaces a working one. Never returns or logs the key."""
     try:
+        key = clean_key(key)
         if kind == "hub":
             label, base = HUB_PRESETS[ident]
             m = multikey_models(base, key)
@@ -2002,19 +2047,37 @@ def connect_key(kind, ident, key):
             if not picks:
                 return {"service": label, "ok": False, "detail": "No chat model found for this key."}
             pid = multikey_save(label, base, key, picks, all(r["free"] for r in m["models"] if r["id"] in picks))
+            restore = lambda: None
         else:
             pid = ident
+            hint = KEY_HINTS.get(pid, "")
             with _lock:
                 cfg = load_cfg()
-                old_key = cfg["providers"][pid].get("key", "")
+                prov = cfg["providers"][pid]
+                old_key, old_base = prov.get("key", ""), prov.get("base", "")
+            if "{" in old_base:                              # an address with a blank, like Cloudflare's account ID
+                mm = re.match(r"^([0-9a-fA-F]{32})[:\s]+(\S+)$", key)
+                if "{account_id}" not in old_base or not mm:
+                    return {"service": prov["label"], "ok": False, "detail": "This service needs an extra value in its address. " + (hint or "Open Settings and fill in the address.")}
+                new_base, key = old_base.replace("{account_id}", mm.group(1)), mm.group(2)
+            else:
+                new_base = old_base
+            with _lock:
+                cfg = load_cfg()
                 cfg["providers"][pid]["key"] = key
+                cfg["providers"][pid]["base"] = new_base
                 save_cfg(cfg)
 
-            def restore():                       # a wrong key must never replace a working one
+            def restore():                                    # a wrong key must never replace a working one
                 with _lock:
                     c3 = load_cfg()
                     c3["providers"][pid]["key"] = old_key
+                    c3["providers"][pid]["base"] = old_base
                     save_cfg(c3)
+
+            def rejected(err):
+                restore()
+                return {"service": prov["label"], "ok": False, "detail": "The service rejected this key (%s). Nothing was changed. %s" % (err, hint)}
             if pid == "openrouter":
                 try:
                     openrouter_autoconfig()
@@ -2022,29 +2085,49 @@ def connect_key(kind, ident, key):
                     pass
             else:
                 s = models_sync(pid)
-                if s.get("ok") is False:
-                    restore()
-                    return {"service": load_cfg()["providers"][pid]["label"], "ok": False, "detail": s.get("error", "Could not list the models.")}
+                if s.get("ok") is False and s.get("status") in (401, 403):
+                    return rejected(s.get("error", "401"))
+                # any other failure (for example no model list at this service) is fine: the real test below decides
                 tiers = load_cfg()["providers"][pid]["tiers"]
                 if not tiers or not tiers[0].get("model"):
                     r = list_models(pid)
                     picks = auto_pick_ids(r.get("ids") or []) if r.get("ok") else []
                     if not picks:
-                        return {"service": load_cfg()["providers"][pid]["label"], "ok": False, "detail": "The key works but no chat model was found."}
+                        return {"service": prov["label"], "id": pid, "ok": False, "saved": True,
+                                "detail": "The key is saved but no chat model could be found. Open Models in use or Settings and type a model name. " + hint}
                     with _lock:
                         cfg = load_cfg()
                         cfg["providers"][pid]["tiers"] = _tier_list(picks)
                         save_cfg(cfg)
             _pool_cache.pop(pid, None)
+        label = _label_of(pid)
         t = test_connection(pid, 0)
-        label = load_cfg()["providers"][pid]["label"]
+        # the first model may simply not exist for this account: try other models of the same key before giving up
+        tried = {load_cfg()["providers"][pid]["tiers"][0].get("model")}
+        for _ in range(3):
+            if t.get("ok") or not re.search(r"HTTP (400|404|422)", str(t.get("error", ""))):
+                break
+            r = list_models(pid)
+            alts = [i for i in auto_pick_ids(r.get("ids") or []) if i not in tried] if r.get("ok") else []
+            if not alts:
+                break
+            tried.add(alts[0])
+            with _lock:
+                cfg = load_cfg()
+                cfg["providers"][pid]["tiers"][0]["model"] = alts[0]
+                save_cfg(cfg)
+            t = test_connection(pid, 0)
+        n = len(load_cfg()["providers"][pid]["tiers"])
         if t.get("ok"):
-            return {"service": label, "id": pid, "ok": True, "detail": "%d models in the ladder, first one answered in %d ms" % (len(load_cfg()["providers"][pid]["tiers"]), t.get("ms", 0))}
+            return {"service": label, "id": pid, "ok": True, "detail": "%d model%s in the ladder, first one answered in %d ms" % (n, "" if n == 1 else "s", t.get("ms", 0))}
         err = str(t.get("error", "unknown error"))
         if kind != "hub" and re.search(r"HTTP 40[13]", err):
-            restore()
-            return {"service": label, "ok": False, "detail": "The service rejected this key (%s). Nothing was changed." % err}
-        return {"service": label, "id": pid, "ok": False, "saved": True, "detail": "Saved, but the first model did not answer: %s" % err}
+            return rejected(err)
+        if re.search(r"HTTP 429", err):
+            return {"service": label, "id": pid, "ok": True, "detail": "The key works. The service is rate limiting right now, so Aqua will wait or switch automatically."}
+        if re.search(r"HTTP 402", err):
+            return {"service": label, "id": pid, "ok": False, "saved": True, "detail": "The key is valid but this model needs credit. Pick a free model in Models in use. " + hint}
+        return {"service": label, "id": pid, "ok": False, "saved": True, "detail": "Saved, but the first model did not answer: %s %s" % (err, hint)}
     except Exception as e:
         return {"service": "?", "ok": False, "detail": str(e)[:200]}
 
