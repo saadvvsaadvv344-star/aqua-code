@@ -2047,30 +2047,70 @@ GUESS_MODELS = ["gpt-oss-20b", "gpt-oss-120b", "llama-3.3-70b-instruct", "llama-
                 "qwen3-32b", "gemma-3-27b-it", "deepseek-chat", "glm-4.7-flash", "openai/gpt-oss-20b", "meta-llama/Llama-3.3-70B-Instruct"]
 
 
+def _probe(base, model, key):
+    """One tiny request that changes nothing: would this address accept this key? -> 'yes' | 'no' | 'maybe' | 'unknown'."""
+    try:
+        http_json(base.rstrip("/") + "/chat/completions", key, {"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}, timeout=15)
+        return "yes"
+    except LLMError as e:
+        m = e.msg or ""
+        if e.status in (401, 403) or KEY_BAD_RX.search(m):
+            return "no"
+        if e.status in (402, 429):
+            return "yes"                                    # it knew the key: only credit or a limit stands in the way
+        if e.status in (400, 404, 410, 422):
+            return "maybe"                                  # the key may be fine and only the model name is wrong
+        if re.search(r"Expecting value|Extra data", m):
+            return "no"
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def probe_service(kind, ident, key):
+    cfg = load_cfg()
+    if kind == "hub":
+        base, model = HUB_PRESETS[ident][1], GUESS_MODELS[0]
+    else:
+        p = cfg["providers"][ident]
+        base = p["base"]
+        model = next((t["model"] for t in p["tiers"] if t.get("model")), GUESS_MODELS[0])
+    return _probe(base, model, key)
+
+
 def identify_and_connect(key, hint):
-    """A key with no recognisable start: try the service whose key page the user just opened first, then a few others whose keys
-    have no special start. The first one that really answers wins. Each try is one request; failed tries change nothing."""
+    """A key whose format Aqua does not know: ask EVERY service (all at once, with one tiny harmless request each) whether it accepts the key,
+    then connect the one that does. Nothing is saved until a service has accepted the key. The key does reach each service asked."""
+    import concurrent.futures as cf
     cfg = load_cfg()
     provs = cfg["providers"]
-    distinct = {svc for _p, svc in KEY_PREFIXES}
     cands = []
-    if hint in provs and not has_access(provs[hint]):
-        cands.append(hint)
+    if hint in provs and not has_access(provs[hint]) and "{" not in provs[hint].get("base", ""):
+        cands.append(("prov", hint))
     for pid, v in provs.items():
-        if pid in cands or has_access(v) or v.get("custom") or v.get("nokey") or "{" in v.get("base", "") or pid in distinct:
+        if ("prov", pid) in cands or has_access(v) or v.get("custom") or v.get("nokey") or "{" in v.get("base", ""):
             continue
-        cands.append(pid)
-    tried, last = [], None
-    for pid in cands[:6]:
-        tried.append(provs[pid]["label"])
-        r = connect_key("prov", pid, key)
+        cands.append(("prov", pid))
+    cands += [("hub", h) for h in HUB_PRESETS]
+    with cf.ThreadPoolExecutor(10) as ex:
+        verdicts = list(ex.map(lambda c: probe_service(c[0], c[1], key), cands))
+    name = lambda c: provs[c[1]]["label"] if c[0] == "prov" else HUB_PRESETS[c[1]][0]
+    order = [c for c, v in zip(cands, verdicts) if v == "yes"] + [c for c, v in zip(cands, verdicts) if v == "maybe"]
+    last = None
+    for c in order:
+        r = connect_key(c[0], c[1], key)
         if r.get("ok") or r.get("saved"):
-            if len(tried) > 1:
-                r["detail"] = "Found by trying %s. %s" % (", ".join(tried), r.get("detail", ""))
+            r["detail"] = "Found by asking %d services: %s accepted it. %s" % (len(cands), name(c), r.get("detail", ""))
             return r
         last = r
-    detail = "No service accepted this key. Tried: %s. %s" % (", ".join(tried) or "none", (last or {}).get("detail", ""))
-    return {"service": tried[0] if tried else "?", "ok": False, "detail": detail[:400]}
+    unsure = [name(c) for c, v in zip(cands, verdicts) if v == "unknown"]
+    detail = "None of the %d services accepted this key." % len(cands)
+    if last:
+        detail += " %s said: %s" % (last.get("service", "?"), last.get("detail", ""))
+    if unsure:
+        detail += " Could not reach: %s." % ", ".join(unsure[:6])
+    detail += " Check that the whole key was copied. If you know the service, write its name first, like gonka: your-key."
+    return {"service": "?", "ok": False, "detail": detail[:600]}
 
 
 def cloudflare_account(token):
