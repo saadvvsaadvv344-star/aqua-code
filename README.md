@@ -39,7 +39,7 @@ The chat bar (next to Auto / Lite / Pro and the approval mode) has a **working-l
 | --- | --- |
 | **Low** | Gentle. Plain look (glass off), no animations, no intro, and the Aqua server runs at low priority on a quarter of your CPU cores (4 of 16, never fewer than 2). Anything it starts (commands, dev servers) inherits that. |
 | **Balanced** (default) | Soft glass, normal priority, all cores. |
-| **Max** | Full liquid glass with a **live water floor** behind it: ripples follow your cursor and clicks, with caustic light and reflections. If your PC cannot keep up, Aqua drops back to Balanced by itself. |
+| **Max** | Full liquid glass plus **live water light** over your normal background (the background itself never changes): ripples follow your cursor and clicks, with caustic light and reflections. If your PC cannot keep up, Aqua drops back to Balanced by itself. |
 
 On Windows you can switch levels at any time. On macOS and Linux a lowered priority cannot be raised again without administrator rights, so going back up from Low needs an app restart there. Heavy jobs such as rendering the explainer video run with their own limits (see `video/README.md`).
 

@@ -71,7 +71,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .seg .thumb{background:linear-gradient(160deg,var(--gold2),var(--gold));box-shadow:inset 0 1.5px 0 rgba(255,255,255,.8),inset 0 -2px 5px rgba(30,34,42,.35),0 4px 16px -3px rgba(205,209,216,.8)}
 .tchips .thumb{background:linear-gradient(145deg,rgba(255,255,255,.3),rgba(255,255,255,.07));border:1px solid var(--gb2);box-shadow:inset 1px 1px 0 var(--hi),0 4px 14px -4px var(--sh)}
 .seg button,.tchips button{z-index:1}
-html:not([data-fx=full]) .bg i,html:not([data-fx=full]) .bg u,html:not([data-fx=full]) .bg s{animation:none}
+.bg i,.bg u,.bg s{animation:none!important}
 .wp{display:flex;flex-direction:column;gap:3px;text-align:left;padding:14px 16px;border-radius:20px;border:1px solid var(--gb2);background:var(--g2);transition:transform .45s cubic-bezier(.34,1.6,.5,1),border-color .2s,background .2s}
 .wp:hover{transform:perspective(700px) translateY(-3px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}.wp.on{border-color:var(--gold);background:rgba(205,209,216,.13);box-shadow:0 0 0 3px rgba(205,209,216,.18)}.wp b{font-size:15px}.wp small{color:var(--mut);font-size:12px}
 @keyframes mat{from{opacity:0;transform:scale(.92) translateY(26px)}}
@@ -360,8 +360,7 @@ pre.out{border-radius:12px;background:var(--code);margin-top:8px}
 .lvtrack button.on[data-l=high]{color:#08272d}
 [data-fx=off] .lvthumb{transition:none!important;animation:none!important}
 /* max level: a live water floor behind the glass */
-#waterbg{position:fixed;inset:0;width:100vw;height:100vh;z-index:1;pointer-events:none}
-[data-water=on] .bg i,[data-water=on] .bg u,[data-water=on] .bg s,[data-water=on] .bg>div{display:none}
+#waterbg{position:fixed;inset:0;width:100vw;height:100vh;z-index:1;pointer-events:none;mix-blend-mode:screen}
 .mbtn{display:none}
 @media (max-width:1240px){.app{grid-template-columns:260px minmax(0,1fr)}.right{position:fixed;right:14px;top:14px;bottom:14px;width:min(360px,calc(100vw - 28px));z-index:30;transform:translateX(120%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}.right.show{transform:none}.mbtn.r{display:inline-flex}}
 @media (max-width:860px){.app{grid-template-columns:1fr}.left{position:fixed;left:14px;top:14px;bottom:14px;width:min(300px,calc(100vw - 28px));z-index:30;transform:translateX(-120%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}.left.show{transform:none}.mbtn{display:inline-flex}.sug{grid-template-columns:1fr}.g2,.g3{grid-template-columns:1fr}.trow{grid-template-columns:1fr 1fr}.head{flex-wrap:wrap}}
@@ -1250,11 +1249,12 @@ float caustic(vec2 uv,float t){vec2 p=mod(uv*6.28318,6.28318)-250.;vec2 i=p;floa
 void main(){vec2 uv=gl_FragCoord.xy/R;vec2 p=(gl_FragCoord.xy-.5*R)/R.y;float e=.004;
  float dx=hgt(p+vec2(e,0.))-hgt(p-vec2(e,0.));float dy=hgt(p+vec2(0.,e))-hgt(p-vec2(0.,e));
  vec3 n=normalize(vec3(-dx/(2.*e)*.9,-dy/(2.*e)*.9,1.));vec2 w=n.xy;float asp=R.x/R.y;vec2 fuv=uv-w*.035;
- vec3 dk=mix(vec3(.04,.045,.055),vec3(.11,.12,.14),smoothstep(0.,1.,1.-length(p)*.8));vec3 lt=mix(vec3(.80,.82,.86),vec3(.92,.93,.96),smoothstep(0.,1.,1.-length(p)*.8));
- vec3 col=mix(dk,lt,L);vec2 g=fract(vec2(fuv.x*asp,fuv.y)*9.);float tile=smoothstep(.0,.03,g.x)*smoothstep(.0,.03,g.y);col*=.82+.18*tile;
- float c=caustic(fuv*vec2(asp,1.)*.55+w*.05,T*.5);col+=mix(vec3(.40,.44,.52)*.42,vec3(1.)*.22,L)*c;
- vec3 Lg=normalize(vec3(-.4,.5,.75));vec3 H=normalize(Lg+vec3(0.,0.,1.));float spec=pow(max(dot(n,H),0.),110.);col+=mix(vec3(.92,.96,1.)*1.1,vec3(1.)*.9,L)*spec;
- float fr=clamp((1.-n.z)*7.,0.,1.);col+=mix(vec3(.5,.55,.62)*.3,vec3(1.)*.25,L)*fr;gl_FragColor=vec4(pow(col,vec3(.95)),1.);}`;
+ float c=caustic(fuv*vec2(asp,1.)*.55+w*.05,T*.5);
+ vec3 Lg=normalize(vec3(-.4,.5,.75));vec3 H=normalize(Lg+vec3(0.,0.,1.));float spec=pow(max(dot(n,H),0.),110.);
+ float fr=clamp((1.-n.z)*7.,0.,1.);
+ vec3 light=vec3(.42,.47,.56)*c*.5+vec3(.92,.96,1.)*spec*.9+vec3(.5,.55,.65)*fr*.16;
+ vec3 col=mix(light,vec3(1.)-light*.35,L);
+ gl_FragColor=vec4(pow(col,vec3(.95)),1.);}`;
     const sh=(t,src)=>{const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);return gl.getShaderParameter(o,gl.COMPILE_STATUS)?o:null};
     const vs=sh(gl.VERTEX_SHADER,'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'),fs=sh(gl.FRAGMENT_SHADER,FS);if(!vs||!fs)return false;
     const pr=gl.createProgram();gl.attachShader(pr,vs);gl.attachShader(pr,fs);gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return false;gl.useProgram(pr);
@@ -1274,7 +1274,7 @@ void main(){vec2 uv=gl_FragCoord.xy/R;vec2 p=(gl_FragCoord.xy-.5*R)/R.y;float e=
     const T=(performance.now()-this.t0)/1000;
     if(T>this.nextAmbient){this.drop((Math.random()-.5)*1.6,(Math.random()-.5)*.8,.55);this.nextAmbient=T+2.4+Math.random()*2.2}
     const D=new Float32Array(48);for(let i=0;i<12;i++)D[i*4+2]=999;this.drops.forEach((d,i)=>{D[i*4]=d[0];D[i*4+1]=d[1];D[i*4+2]=d[2];D[i*4+3]=d[3]});
-    const gl=this.gl;gl.uniform1f(this.uT,T);gl.uniform4fv(this.uD,D);gl.uniform1f(this.uL,document.documentElement.dataset.theme==='light'?1:0);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    const gl=this.gl;gl.uniform1f(this.uT,T);gl.uniform4fv(this.uD,D);const lt=document.documentElement.dataset.theme==='light';gl.uniform1f(this.uL,lt?1:0);const bm=lt?'multiply':'screen';if(this.cv.style.mixBlendMode!==bm)this.cv.style.mixBlendMode=bm;gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
     if(this.frames>120&&this.ema>62){this.frames=0;this.set(false);toast('Max was too heavy for this PC, so Aqua went back to Balanced');setLevel('balanced')}},
   set(on){
     if(on===this.on)return;
