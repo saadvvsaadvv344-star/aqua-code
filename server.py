@@ -2270,6 +2270,15 @@ def connect_key(kind, ident, key):
         return {"service": "?", "ok": False, "detail": str(e)[:200]}
 
 
+def klog(service, hint, ok, detail):
+    """One line per key attempt in data/key_attempts.log: when, which service, the key's first 4 and last 3 characters, result. Never the key."""
+    try:
+        with open(os.path.join(DATA, "key_attempts.log"), "a", encoding="utf-8") as f:
+            f.write("%s | %s | %s | %s | %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), service, hint, "OK" if ok else "FAILED", re.sub(r"\s+", " ", str(detail))[:400]))
+    except Exception:
+        pass
+
+
 def bulk_keys(text, hint_id=None, any_key=False):
     results, seen = [], set()
     pairs = parse_key_lines(text)
@@ -2294,6 +2303,8 @@ def bulk_keys(text, hint_id=None, any_key=False):
         r = connect_key(svc[0], svc[1], key)
         r["hint"] = hint
         results.append(r)
+    for r in results:
+        klog(r.get("service", "?"), r.get("hint", ""), r.get("ok"), r.get("detail", ""))
     cfg = load_cfg()
     ok_ids = [r["id"] for r in results if r.get("ok") and r.get("id")]
     if ok_ids and not has_access(cfg["providers"].get(cfg["provider"], {})):
@@ -3654,7 +3665,9 @@ class H(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._send(200, {"ok": False, "error": "Could not reach OpenRouter: %s" % e})
             if u.path == "/api/test":
-                return self._send(200, test_connection(b.get("provider"), int(b.get("tier") or 0)))
+                tr = test_connection(b.get("provider"), int(b.get("tier") or 0))
+                klog(str(b.get("provider")), "(test)", tr.get("ok"), tr.get("error") or ("answered in %s ms" % tr.get("ms")))
+                return self._send(200, tr)
             if u.path == "/api/balance":
                 return self._send(200, fetch_balance(b.get("provider") or load_cfg()["provider"]))
             if u.path == "/api/project/new":
