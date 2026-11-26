@@ -50,6 +50,8 @@ DEFAULT_CONFIG = {
     "level": "balanced",          # working level: low (gentle), balanced, high (full speed)
     "no_key_fallback": True,      # when no API key is saved, use the free anonymous models that still work without one
     "failover_paid": False,       # ...but only to FREE providers unless this is on (so it never spends money by surprise)
+    "gateway": True,              # the one-key gateway at /v1 (see gateway_plan); needs the gateway key
+    "gateway_key": "",            # created on first use, never sent to the page except by /api/gateway
     "max_steps": 40,
     "daily_budget": 1.0,          # USD, 0 = unlimited
     "total_budget": 10.0,         # USD, 0 = unlimited
@@ -194,6 +196,7 @@ def save_cfg(cfg):
 
 def masked_cfg(cfg):
     c = copy.deepcopy(cfg)
+    c.pop("gateway_key", None)
     for p in c["providers"].values():
         k = p.get("key", "")
         p["has_key"] = has_access(p)
@@ -2801,11 +2804,232 @@ def tool_download_3d(ws, a):
     return "Downloaded %s (%.1f MB) to models/%s. Call show_3d to look at it. Tell the user the source and that its licence must be checked before reuse." % (name, len(data) / 1e6, name)
 
 
+# --------------------------------------------------------------------------- gateway: ONE key for all of your own keys
+def gateway_key(cfg=None):
+    cfg = cfg or load_cfg()
+    k = cfg.get("gateway_key") or ""
+    if not k:
+        import secrets
+        k = "aqua-" + secrets.token_urlsafe(24)
+        with _lock:
+            c = load_cfg()
+            c["gateway_key"] = k
+            save_cfg(c)
+    return k
+
+
+def _open_chat(url, key, payload, timeout=240):
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST", headers={
+        "Content-Type": "application/json", "Authorization": "Bearer " + key, "User-Agent": "aqua-code/1.0"})
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:
+            pass
+        try:
+            j = json.loads(body)
+            if isinstance(j, list) and j:
+                j = j[0]
+            body = (j.get("error") or {}).get("message") or body
+        except Exception:
+            pass
+        raise LLMError(e.code, body[:600] or str(e))
+    except urllib.error.URLError as e:
+        raise LLMError(0, "Network error: %s" % e.reason)
+    except Exception as e:
+        raise LLMError(0, "Request failed: %s" % e)
+
+
+def gateway_plan(cfg, want):
+    """Which (provider, tier, model) to try, in order. 'auto' = cheapest first, 'aqua-best' = strongest first, an exact model name = that one first."""
+    want = str(want or "auto").strip().lower()
+    free_only = not cfg.get("failover_paid", False)
+    order = [cfg["provider"]] + [k for k in cfg["providers"] if k != cfg["provider"]]
+    rows, exact = [], []
+    for pid in order:
+        p = cfg["providers"].get(pid)
+        if not p or not has_access(p) or "{" in p.get("base", ""):
+            continue
+        for i, t in enumerate(p["tiers"]):
+            if not t.get("model"):
+                continue
+            row = (pid, i, t["model"])
+            if want == t["model"].lower():
+                exact.append(row)
+            if p.get("free") or not free_only:
+                rows.append(row)
+    rows.sort(key=(lambda r: -r[1]) if want in ("aqua-best", "best", "pro") else (lambda r: r[1]))
+    out, seen = [], set()
+    for r in exact + rows:
+        if r not in seen:
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+def gateway_attempts(cfg, body, state):
+    """Yields (pid, provider, tier_index, tier, open_response) for the first AI that accepts the request. Limited ones are skipped and remembered."""
+    queue = gateway_plan(cfg, body.get("model"))
+    extra_done = False
+    i = 0
+    while True:
+        if i >= len(queue):
+            if extra_done or not cfg.get("pool_models", True):
+                return
+            extra_done = True                            # every configured model failed: try the other models of the same keys
+            for pid in dict.fromkeys(r[0] for r in queue):
+                p = cfg["providers"][pid]
+                if p.get("free") or cfg.get("failover_paid", False):
+                    queue.extend((pid, -1, m) for m in pool_models(pid, p["tiers"]))
+            continue
+        pid, idx, model = queue[i]
+        i += 1
+        p = cfg["providers"][pid]
+        t = p["tiers"][idx] if idx >= 0 else {"name": "Extra", "model": model, "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 0, "rpd": 0}
+        lim = is_limited(pid + ":" + model)
+        if lim:
+            state["soonest"] = min(state.get("soonest") or lim["until"], lim["until"])
+            continue
+        if not quota_left_for(pid, t):
+            continue
+        payload = dict(body)
+        payload["model"] = model
+        state["tried"] = state.get("tried", 0) + 1
+        try:
+            resp = _open_chat(p["base"].rstrip("/") + "/chat/completions", auth_key(p), payload)
+        except LLMError as e:
+            state["last"] = e
+            if e.status in (429, 503, 402):
+                until = note_limit(pid, p["label"], model, e.msg)
+                state["soonest"] = min(state.get("soonest") or until, until)
+            elif e.status in (401, 403):
+                note_limit(pid, p["label"], model, "", daily=False)      # a rejected key: leave it alone for a minute
+            continue
+        yield pid, p, idx, t, resp
+
+
+def gateway_info():
+    cfg = load_cfg()
+    key = gateway_key(cfg)
+    services = []
+    for pid, p in cfg["providers"].items():
+        if not has_access(p):
+            continue
+        ms = [t["model"] for t in p["tiers"] if t.get("model")]
+        if ms:
+            services.append({"label": p["label"], "free": bool(p.get("free")), "models": ms,
+                             "limited": [m for m in ms if is_limited(pid + ":" + m)]})
+    return {"on": bool(cfg.get("gateway", True)), "key": key, "services": services, "models": ["auto", "aqua-best"] + [m for s in services for m in s["models"]]}
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, *a):
         pass
+
+    # ---- gateway (OpenAI-compatible): http://127.0.0.1:PORT/v1  with the gateway key
+    def _gw_headers(self, extra=None):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "authorization, content-type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+
+    def _gw_send(self, code, obj, extra=None):
+        body = obj if isinstance(obj, (bytes, bytearray)) else json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._gw_headers(extra)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _gw_error(self, code, msg):
+        self._gw_send(code, {"error": {"message": msg, "type": "aqua_gateway_error", "code": code}})
+
+    def _gw_auth(self):
+        import hmac
+        cfg = load_cfg()
+        if not cfg.get("gateway", True):
+            self._gw_error(403, "The Aqua Code gateway is switched off.")
+            return None
+        got = (self.headers.get("Authorization") or "").encode("utf-8")
+        if not hmac.compare_digest(got, ("Bearer " + gateway_key(cfg)).encode("utf-8")):
+            self._gw_error(401, "Wrong or missing gateway key. Copy it from Aqua Code, AI menu, One key for everything.")
+            return None
+        return cfg
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self._gw_headers()
+        self.end_headers()
+
+    def _gateway_get(self, path):
+        cfg = self._gw_auth()
+        if not cfg:
+            return
+        if path.rstrip("/") == "/v1/models":
+            info = gateway_info()
+            return self._gw_send(200, {"object": "list", "data": [{"id": m, "object": "model", "owned_by": "aqua-code"} for m in dict.fromkeys(info["models"])]})
+        self._gw_error(404, "Unknown path. Use /v1/chat/completions or /v1/models.")
+
+    def _gateway_chat(self, body):
+        cfg = self._gw_auth()
+        if not cfg:
+            return
+        if not isinstance(body.get("messages"), list) or not body["messages"]:
+            return self._gw_error(400, "The request needs a non-empty messages list.")
+        stream = bool(body.get("stream"))
+        state = {}
+        for pid, p, idx, t, resp in gateway_attempts(cfg, body, state):
+            tiers_rec, idx_rec = (p["tiers"], idx) if idx >= 0 else ([t], 0)
+            extra = {"X-Aqua-Provider": p["label"], "X-Aqua-Model": t["model"]}
+            if not stream:
+                try:
+                    data = resp.read()
+                except Exception:
+                    continue
+                try:
+                    u = (json.loads(data).get("usage") or {})
+                except Exception:
+                    u = {}
+                record_usage(pid, tiers_rec, idx_rec, int(u.get("prompt_tokens") or 0), 0, int(u.get("completion_tokens") or 0), bool(p.get("free")))
+                return self._gw_send(200, data, extra)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self._gw_headers(extra)
+            self.end_headers()
+            tin = tout = 0
+            try:
+                for line in resp:
+                    self.wfile.write(line)
+                    self.wfile.flush()
+                    if b'"usage"' in line and line.startswith(b"data:"):
+                        try:
+                            u = json.loads(line[5:]).get("usage") or {}
+                            tin, tout = int(u.get("prompt_tokens") or tin), int(u.get("completion_tokens") or tout)
+                        except Exception:
+                            pass
+            except (BrokenPipeError, ConnectionError, OSError):
+                pass
+            record_usage(pid, tiers_rec, idx_rec, tin, 0, tout, bool(p.get("free")))
+            self.close_connection = True
+            return
+        last, soon = state.get("last"), state.get("soonest")
+        if soon and soon > time.time():
+            return self._gw_send(429, {"error": {"message": "Every connected AI is at its limit right now. The first one is back in about %s." % fmt_in(soon - time.time()), "type": "rate_limit", "code": 429}},
+                                 {"Retry-After": str(int(soon - time.time()) + 1)})
+        if not state.get("tried") and not gateway_plan(cfg, body.get("model")):
+            return self._gw_error(503, "No AI is connected. Add a key in Aqua Code first.")
+        self._gw_error(502, "No connected AI could answer. Last error: %s" % (last.msg if last else "unknown"))
 
     def _send(self, code, body, ctype="application/json"):
         if not isinstance(body, (bytes, bytearray)):
@@ -2828,6 +3052,8 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         try:
+            if u.path.startswith("/v1/") or u.path == "/v1":
+                return self._gateway_get(u.path)
             if u.path in ("/", "/index.html"):
                 with open(os.path.join(ROOT, "index.html"), "rb") as f:
                     return self._send(200, f.read(), "text/html")
@@ -2923,6 +3149,19 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         b = self._body()
         try:
+            if u.path == "/v1/chat/completions":
+                return self._gateway_chat(b)
+            if u.path == "/api/gateway":
+                act = b.get("action")
+                if act in ("rotate", "toggle"):
+                    with _lock:
+                        c = load_cfg()
+                        if act == "rotate":
+                            c["gateway_key"] = ""
+                        else:
+                            c["gateway"] = bool(b.get("on"))
+                        save_cfg(c)
+                return self._send(200, gateway_info())
             if u.path == "/api/run":
                 text = (b.get("text") or "").strip()
                 if not text:

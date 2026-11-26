@@ -1111,6 +1111,61 @@ function openWelcome(prefer){
   w.classList.add('show');draw();
 }
 
+/* ---------- shared bits for the key windows ---------- */
+function keyWin(onClose){
+  const w=$('#welcome'),box=$('#wbox');
+  const closeW=()=>{w.classList.remove('show');if(onClose)onClose();render();if(!S.sid)showHero()};
+  if(window._wKey)document.removeEventListener('keydown',window._wKey);
+  window._wKey=e=>{if(e.key==='Escape'&&w.classList.contains('show'))closeW()};document.addEventListener('keydown',window._wKey);
+  w.onclick=e=>{if(e.target===w)closeW()};
+  return{w,box,closeW};
+}
+const copyText=async(t)=>{try{await navigator.clipboard.writeText(t);toast('Copied')}catch(e){toast('Select the text and press Ctrl+C')}};
+
+/* ---------- key checklist: every free service with its key page, ticked off as you add them ---------- */
+function openKeyChecklist(){
+  const {box,closeW}=keyWin();
+  const order=['gemini','openrouter','groq','cerebras','mistral','nvidia','github','huggingface','cloudflare','cohere','zai','kilo','ovh','pollinations'];
+  const ents=Object.entries(S.cfg.providers).filter(([k,v])=>(v.info||PINFO[k]||{}).url||v.nokey).sort((a,b)=>{const ia=order.indexOf(a[0]),ib=order.indexOf(b[0]);return (ia<0?99:ia)-(ib<0?99:ib)});
+  const got=ents.filter(e=>e[1].has_key).length;
+  box.innerHTML=`<div style="padding:26px 30px 4px;text-align:center;position:relative"><button class="btn pill ic" id="kc_x" title="Close" aria-label="Close" style="position:absolute;right:18px;top:18px">${ic('x')}</button><div class="logo" style="width:60px;height:60px;margin:0 auto 12px"><svg class="i"><use href="#i-logo"/></svg></div>
+    <h2 style="font-size:24px;letter-spacing:-.3px">Get your free keys fast</h2><p class="mut" style="margin-top:6px">${got} of ${ents.length} connected. Open a key page, copy the key, then press <b>Paste keys</b> once for all of them. Each key is yours and free; Aqua groups them behind one key.</p></div>
+    <div class="modal-b" style="padding-top:12px">${ents.map(([k,v])=>{const inf=v.info||PINFO[k]||{};return `<div style="display:flex;gap:12px;align-items:center;padding:10px 14px;border-radius:14px;background:${v.has_key?'rgba(60,180,120,.12)':'rgba(128,128,128,.08)'}"><span style="color:${v.has_key?'var(--green)':'var(--mut)'}">${ic(v.has_key?'check':'key')}</span><div style="flex:1"><b>${esc(v.label)}</b><div style="font-size:12.5px;color:var(--mut)">${esc(inf.sub||inf.tag||'')}</div></div>${v.has_key?'<span class="chip" style="color:var(--green)"><i></i>connected</span>':(inf.url?`<button class="btn ghost" data-u="${esc(inf.url)}">Open key page</button>`:'<span class="chip" style="color:var(--mut)"><i></i>no key needed</span>')}</div>`}).join('')}</div>
+    <div class="modal-f"><button class="btn ghost" id="kc_gate">One key for everything</button><button class="btn gold" id="kc_paste">${ic('key')}Paste keys</button></div>`;
+  $('#kc_x').onclick=closeW;$('#kc_paste').onclick=openPasteKeys;$('#kc_gate').onclick=openGateway;
+  box.querySelectorAll('[data-u]').forEach(b=>b.onclick=()=>window.open(b.dataset.u,'_blank','noopener'));
+}
+
+/* ---------- gateway: one key and one address for all your own keys ---------- */
+async function openGateway(){
+  const {box,closeW}=keyWin();
+  const draw=g=>{
+    const base=location.origin+'/v1';
+    const n=g.services.length,lim=g.services.reduce((a,s)=>a+s.limited.length,0);
+    box.innerHTML=`<div style="padding:26px 30px 4px;text-align:center;position:relative"><button class="btn pill ic" id="gw_x" title="Close" aria-label="Close" style="position:absolute;right:18px;top:18px">${ic('x')}</button><div class="logo" style="width:60px;height:60px;margin:0 auto 12px"><svg class="i"><use href="#i-logo"/></svg></div>
+      <h2 style="font-size:24px;letter-spacing:-.3px">One key for everything</h2><p class="mut" style="margin-top:6px">All your own keys behind one address and one key. Send a request and Aqua uses the first AI that still has quota, and moves to the next when one runs out. Works with any tool that accepts an OpenAI-compatible address.</p></div>
+      <div class="modal-b" style="padding-top:12px">
+        <label class="fld">Base URL<div style="display:flex;gap:8px"><input id="gw_base" readonly value="${esc(base)}" style="flex:1"><button class="btn ghost" data-c="${esc(base)}">Copy</button></div></label>
+        <label class="fld">API key<div style="display:flex;gap:8px"><input id="gw_key" readonly type="password" value="${esc(g.key)}" style="flex:1"><button class="btn ghost" id="gw_show">Show</button><button class="btn ghost" data-c="${esc(g.key)}">Copy</button></div></label>
+        <label class="fld">Model name<div style="display:flex;gap:8px"><input readonly value="auto" style="flex:1"><button class="btn ghost" data-c="auto">Copy</button></div></label>
+        <div class="guide" style="margin:0"><b>Model names</b><p style="margin-top:4px"><span class="mono">auto</span> cheapest AI first, <span class="mono">aqua-best</span> strongest first, or any exact model name from your keys to try that one first. Everything else is the automatic backup.</p></div>
+        <div><b>${n} service${n===1?'':'s'} behind your key</b>${lim?` <span style="color:var(--amber);font-size:13px">(${lim} model${lim>1?'s':''} limited right now, skipped automatically)</span>`:''}${g.services.map(s=>`<div style="padding:8px 12px;margin-top:6px;border-radius:12px;background:rgba(128,128,128,.08);font-size:13px"><b>${esc(s.label)}</b> ${s.free?'<span class="chip" style="color:var(--green)"><i></i>free</span>':''}<div class="mono" style="color:var(--mut);word-break:break-all">${s.models.map(m=>esc(m)+(s.limited.includes(m)?' (limited)':'')).join(' / ')}</div></div>`).join('')||'<div style="color:var(--mut);font-size:13px;margin-top:6px">No AI is connected yet. Use Paste keys.</div>'}</div>
+        <div class="guide" style="margin:0"><b>Use it</b><pre class="mono" style="white-space:pre-wrap;font-size:12px;margin-top:6px">curl ${esc(base)}/chat/completions \\
+  -H "Authorization: Bearer YOUR_KEY" -H "Content-Type: application/json" \\
+  -d '{"model":"auto","messages":[{"role":"user","content":"hello"}]}'</pre><p style="margin-top:6px">It only works while Aqua Code is open, and only on this PC. Keep the key private: anyone who has it can spend your free quota.</p></div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="gw_on" ${g.on?'checked':''}>Gateway switched on</label>
+      </div>
+      <div class="modal-f"><button class="btn ghost" id="gw_rot">New key</button><button class="btn ghost" id="gw_get">Get more keys</button><button class="btn gold" id="gw_done">Done</button></div>`;
+    $('#gw_x').onclick=closeW;$('#gw_done').onclick=closeW;$('#gw_get').onclick=openKeyChecklist;
+    box.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>copyText(b.dataset.c));
+    $('#gw_show').onclick=e=>{const k=$('#gw_key');k.type=k.type==='password'?'text':'password';e.target.textContent=k.type==='password'?'Show':'Hide'};
+    $('#gw_on').onchange=async e=>{const r=await api('/api/gateway',{action:'toggle',on:e.target.checked});if(r.key)draw(r)};
+    $('#gw_rot').onclick=async()=>{if(!confirm('Make a new key? The old key stops working everywhere.'))return;const r=await api('/api/gateway',{action:'rotate'});if(r.key){draw(r);toast('New key created')}};
+  };
+  box.innerHTML='<div style="padding:40px;text-align:center;color:var(--mut)">Loading...</div>';
+  const g=await api('/api/gateway',{});if(g.key)draw(g);else box.innerHTML='<div style="padding:40px;text-align:center">Could not load the gateway.</div>';
+}
+
 /* ---------- paste your keys: Aqua finds the service and picks the models ---------- */
 function openPasteKeys(){
   const w=$('#welcome'),box=$('#wbox');
@@ -1125,11 +1180,11 @@ function openPasteKeys(){
       <div class="modal-b" style="padding-top:12px">
         <textarea id="pk_text" rows="6" spellcheck="false" autocomplete="off" placeholder="AIza...your Gemini key&#10;gsk_...your Groq key&#10;sk-or-v1-...your OpenRouter key&#10;mistral: your key here&#10;together: your key here" style="width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--gb2);background:rgba(255,255,255,.55);color:inherit;font:13px Consolas,monospace;resize:vertical;white-space:pre">${esc(text)}</textarea>
         <div class="guide" style="margin:0"><b>Not recognised?</b><p style="margin-top:4px">Most keys are detected from their start (AIza, gsk_, sk-or-, csk-, nvapi-, hf_). For any other service write the name first, like <span class="mono">mistral: your-key</span>. Works for all 26 services and for Together, Fireworks, DeepInfra, SambaNova and Hyperbolic.</p></div>
-        <div><button class="btn gold" id="pk_go">${ic('check')}Connect keys</button> <button class="btn ghost" id="pk_hand" style="margin-left:8px">Pick models by hand instead</button></div>
+        <div><button class="btn gold" id="pk_go">${ic('check')}Connect keys</button> <button class="btn ghost" id="pk_hand" style="margin-left:8px">Pick models by hand instead</button> <button class="btn ghost" id="pk_chk" style="margin-left:8px">Where do I get keys?</button></div>
         <div id="pk_res">${results?results.map(r=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-radius:12px;margin-top:6px;background:${r.ok?'rgba(60,180,120,.12)':'rgba(220,80,80,.1)'}"><span style="color:${r.ok?'var(--green)':'var(--red)'};padding-top:2px">${ic(r.ok?'check':'x')}</span><div style="font-size:13px"><b>${esc(r.service)}</b> <span class="mono" style="color:var(--mut)">${esc(r.hint)}</span><br><span style="color:var(--mut)">${esc(r.detail||'')}</span></div></div>`).join(''):''}</div>
       </div>
       <div class="modal-f"><button class="btn ghost" id="pk_close">${results?'Done':'Cancel'}</button></div>`;
-    $('#pk_x').onclick=closeW;$('#pk_close').onclick=closeW;$('#pk_hand').onclick=openMultiKey;
+    $('#pk_x').onclick=closeW;$('#pk_close').onclick=closeW;$('#pk_hand').onclick=openMultiKey;$('#pk_chk').onclick=openKeyChecklist;
     const ta=$('#pk_text');ta.oninput=e=>{text=e.target.value};
     $('#pk_go').onclick=async()=>{
       if(busy)return;text=ta.value;if(!text.trim()){toast('Paste a key first');return}
@@ -1228,7 +1283,7 @@ function drawAiMenu(){
   const m=$('#aiMenu');
   const ents=Object.entries(S.cfg.providers).sort((a,b)=>(a[1].group?1:0)-(b[1].group?1:0));let lastG='';
   m.innerHTML=`<div class="aihead">All AI providers (${ents.filter(e=>e[1].has_key).length} connected of ${ents.length})</div>`+ents.map(([k,v])=>{const g=v.group||'Main providers';const hd=g!==lastG?(lastG=g,`<div class="aihead" style="padding-top:12px;color:var(--mut)">${esc(g)}</div>`):'';return hd+`<button class="airow ${k===S.cfg.provider?'on':''}" data-k="${k}"><i class="kd ${v.has_key?'ok':''}"></i><span class="aitx"><b>${esc(v.label)}</b><em>${v.tiers.map(t=>esc(t.model||'(no model)')).join('  /  ')}</em></span><span class="aist ${v.has_key?'ok':''}">${k===S.cfg.provider?'In use':v.has_key?'Connected':v.nokey?'Enable':'Needs key'}</span></button>`}).join('')
-    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
+    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiGate">${ic('bolt')}One key for everything</button><button class="btn ghost" id="aiChk">${ic('check')}Get free keys</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
   m.querySelectorAll('.airow').forEach(b=>b.onclick=async()=>{
     const k=b.dataset.k,v=S.cfg.providers[k];m.hidden=true;
     if(!v.has_key){openWelcome(k);return}
@@ -1237,7 +1292,7 @@ function drawAiMenu(){
     const r=await api('/api/config',{provider:k});if(!r.config){toast(r.error||'Could not switch');return}
     S.cfg=r.config;S.forced='auto';S.cur=null;render();if(!S.sid)showHero();toast('Now talking with '+v.label);
   });
-  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openPasteKeys()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
+  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openPasteKeys()};$('#aiGate').onclick=()=>{m.hidden=true;openGateway()};$('#aiChk').onclick=()=>{m.hidden=true;openKeyChecklist()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
 }
 document.addEventListener('click',e=>{const m=$('#aiMenu');if(m&&!m.hidden&&!e.target.closest('#aiMenu'))m.hidden=true});
 

@@ -244,6 +244,52 @@
         "note": "Gateway run by a small operator. It sends your prompts to third parties, and some free models may keep prompts or train on them."
       }
     },
+    "modelscope": {
+      "label": "ModelScope",
+      "base": "https://api-inference.modelscope.cn/v1",
+      "group": "Free tiers",
+      "tiers": [
+        {
+          "name": "Lite",
+          "model": ""
+        }
+      ],
+      "info": {
+        "tag": "Free tier",
+        "c": "var(--green)",
+        "sub": "Many open models. Account on modelscope.cn.",
+        "url": "https://modelscope.cn/my/myaccesstoken",
+        "steps": [
+          "Create a ModelScope account (the site is mostly Chinese; a browser translator helps).",
+          "Open your access token page and create a token.",
+          "Paste it in Paste keys as  modelscope: your-token  and Aqua picks the models."
+        ],
+        "note": "Listed on the awesome-free-llm-apis page. The endpoint address was written from memory: if the test fails, check ModelScope's API-Inference docs."
+      }
+    },
+    "siliconflow": {
+      "label": "SiliconFlow",
+      "base": "https://api.siliconflow.cn/v1",
+      "group": "Free tiers",
+      "tiers": [
+        {
+          "name": "Lite",
+          "model": ""
+        }
+      ],
+      "info": {
+        "tag": "Free tier",
+        "c": "var(--green)",
+        "sub": "Free small models. Account on siliconflow.cn.",
+        "url": "https://cloud.siliconflow.cn/account/ak",
+        "steps": [
+          "Create a SiliconFlow account.",
+          "Open the API keys page and create a key.",
+          "Paste it in Paste keys as  siliconflow: your-key  and Aqua picks the models."
+        ],
+        "note": "Listed on the awesome-free-llm-apis page. The endpoint address was written from memory: if the test fails, check SiliconFlow's docs (some accounts use api.siliconflow.com)."
+      }
+    },
     "gonka": {
       "label": "Gonka Broker",
       "base": "https://proxy.gonkabroker.com/v1",
