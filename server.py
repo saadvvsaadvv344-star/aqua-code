@@ -2223,8 +2223,9 @@ def tool_recipes(ws, a):
     if not name:
         return "Tested starter recipes (copy one, then adapt it to the brief):\n" + "\n".join("- %s: %s" % (k, v[1]) for k, v in RECIPES.items()) + "\nCall recipes with name=<one of these> to copy it."
     if name not in RECIPES:                                    # forgiving: "slime", "3d", "game" find the right recipe
-        words = [w for w in re.split(r"\W+", name) if len(w) > 2]
-        hits = [k for k, v in RECIPES.items() if any(w in (k + " " + v[1]).lower() for w in words)]
+        words = [w for w in re.split(r"\W+", name) if len(w) >= 2]
+        hits = sorted((k for k, v in RECIPES.items() if any(w in (k + " " + v[1]).lower() for w in words)),
+                      key=lambda k: -(sum(2 for w in words if w in k) + sum(1 for w in words if w in RECIPES[k][1].lower())))
         if len(hits) >= 1:
             name = hits[0]
         else:
