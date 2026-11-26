@@ -2243,8 +2243,9 @@ def connect_key(kind, ident, key):
             return rejected(err)
         if re.search(r"HTTP 429", err):
             return {"service": label, "id": pid, "ok": True, "detail": "The key works. The service is rate limiting right now, so Aqua will wait or switch automatically."}
-        if re.search(r"HTTP 402", err):
-            return {"service": label, "id": pid, "ok": False, "saved": True, "detail": "The key is valid but this model needs credit. Pick a free model in Models in use. " + hint}
+        if re.search(r"HTTP 402", err):                      # the key is real, but the account may not use it without credit or a card: do not keep a key that cannot work
+            restore()
+            return {"service": label, "ok": False, "detail": "The key is valid, but %s will not serve it: %s Nothing was saved. %s" % (label, re.sub(r"\s*\(HTTP 402\)\s*$", "", err)[:230], hint)}
         return {"service": label, "id": pid, "ok": False, "saved": True, "detail": "Saved, but the first model did not answer: %s %s" % (err, hint)}
     except Exception as e:
         return {"service": "?", "ok": False, "detail": str(e)[:200]}
