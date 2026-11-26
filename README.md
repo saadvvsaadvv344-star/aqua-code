@@ -219,3 +219,7 @@ Press **Add multi-model API key** (in the Connect window or the AI menu) and pas
 ## One key for everything (gateway)
 
 Press **One key for everything** in the AI menu. Aqua gives you one address (`http://127.0.0.1:PORT/v1`) and one key (`aqua-...`) that work like an OpenAI-compatible service: send a request and Aqua uses the first of your own connected AIs that still has quota, moves to the next when one hits its limit, and finally tries the other models of the same keys. Model `auto` starts with the cheapest, `aqua-best` with the strongest, or give an exact model name to try that one first. Streaming works. The key is created on first use, you can make a new one or switch the gateway off, and it only works on this PC while Aqua Code is open. **Get free keys** opens a checklist with the key page of every free service and ticks off the ones you have already added; paste them all together in **Paste keys**.
+
+## Models in use
+
+**Models in use** (AI menu) lists every model Aqua can use with a connected key and what it does with each one: **In use** (your ladder), **Backup** (tried automatically when the ladder is limited), **Limited** (with the time it comes back), **No credit** (the service refused it for lack of money, so it is skipped for an hour and nothing is charged) and, for OpenRouter, **Free, unused**. **Add to ladder** puts a backup model in the ladder (six at most). For OpenRouter the automatic backups are all of its free models that can use tools (about ten at the moment), never the paid ones.

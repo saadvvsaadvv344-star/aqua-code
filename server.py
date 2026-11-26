@@ -1216,10 +1216,51 @@ def out_of_credit(e):
 
 
 _pool_cache = {}
+NOCREDIT = {}                      # "pid:model" -> time it answered "out of credit": skipped for an hour so it is not retried again and again
+
+
+def no_credit(key):
+    t = NOCREDIT.get(key)
+    if not t:
+        return False
+    if time.time() - t > 3600:
+        NOCREDIT.pop(key, None)
+        return False
+    return True
+
+
+_or_cache = [0.0, []]
+
+
+def openrouter_catalog():
+    """OpenRouter's public model list: which models are free and which can use tools. Cached for an hour."""
+    if _or_cache[1] and time.time() - _or_cache[0] < 3600:
+        return _or_cache[1]
+    try:
+        req = urllib.request.Request("https://openrouter.ai/api/v1/models", headers={"User-Agent": "aqua-code/1.0"})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            data = json.loads(r.read().decode("utf-8")).get("data", [])
+    except Exception:
+        return _or_cache[1]
+    rows = []
+    for m in data:
+        mid = str(m.get("id") or "")
+        if not mid:
+            continue
+        pr = m.get("pricing") or {}
+        free = mid.endswith(":free") or (str(pr.get("prompt")) in ("0", "0.0") and str(pr.get("completion")) in ("0", "0.0"))
+        rows.append({"id": mid, "free": bool(free), "tools": "tools" in (m.get("supported_parameters") or []), "ctx": int(m.get("context_length") or 0)})
+    _or_cache[:] = [time.time(), rows]
+    return rows
 
 
 def pool_models(pid, tiers):
     """Other chat models the provider offers with this same key. Each model has its own free quota, so when the configured ones are limited, Aqua just uses these instead of waiting."""
+    if pid == "openrouter":                         # only the FREE models that can use tools: a paid one would just answer "no credit"
+        have_ = {t["model"] for t in tiers}
+        ids = [m["id"] for m in openrouter_catalog() if m["free"] and m["tools"] and m["id"] not in have_ and not no_credit(pid + ":" + m["id"])]
+        if ids:
+            return ids[:12]
     c = _pool_cache.get(pid)
     if not c or time.time() - c[0] > 3600:
         r = list_models(pid)
@@ -1227,7 +1268,7 @@ def pool_models(pid, tiers):
         _pool_cache[pid] = c
     have = {t["model"] for t in tiers}
     bad = re.compile(r"embed|tts|audio|image|vision|live|transcribe|guard|moderation|rerank|whisper|imagen|veo|lyria|dall|ocr|robotics|computer-use|learnlm|aqa|gemma|safeguard|-exp|exp-|preview-\d|thinking|search|ranker|code-?bison|text-bison", re.I)
-    ids = [i for i in c[1] if i not in have and not bad.search(i)]
+    ids = [i for i in c[1] if i not in have and not bad.search(i) and not no_credit(pid + ":" + i)]
     ids.sort(key=lambda i: (0 if "flash" in i.lower() else 2 if "pro" in i.lower() else 1, len(i)))
     return ids[:8]
 
@@ -1516,6 +1557,8 @@ def agent_loop(run, user_text, forced_tier):
                         until = note_limit(pid, plabel, m, e.msg)
                         run.emit("limit", provider=plabel, model=m, until=until, kind=LIMIT_UNTIL[pid + ":" + m]["kind"])
                     if out_of_credit(e):
+                        NOCREDIT[pid + ":" + m] = time.time()
+                        run.emit("limit", provider=plabel, model=m, until=time.time() + 3600, kind="credit")
                         if next_provider("%s is out of credit" % plabel):
                             continue
                     else:
@@ -2919,7 +2962,7 @@ def gateway_attempts(cfg, body, state):
         if lim:
             state["soonest"] = min(state.get("soonest") or lim["until"], lim["until"])
             continue
-        if not quota_left_for(pid, t):
+        if no_credit(pid + ":" + model) or not quota_left_for(pid, t):
             continue
         payload = dict(body)
         payload["model"] = model
@@ -2928,13 +2971,77 @@ def gateway_attempts(cfg, body, state):
             resp = _open_chat(p["base"].rstrip("/") + "/chat/completions", auth_key(p), payload)
         except LLMError as e:
             state["last"] = e
-            if e.status in (429, 503, 402):
+            if e.status == 402 or out_of_credit(e):
+                NOCREDIT[pid + ":" + model] = time.time()                 # needs credit: skipped for an hour, no charge
+            elif e.status in (429, 503):
                 until = note_limit(pid, p["label"], model, e.msg)
                 state["soonest"] = min(state.get("soonest") or until, until)
             elif e.status in (401, 403):
                 note_limit(pid, p["label"], model, "", daily=False)      # a rejected key: leave it alone for a minute
             continue
         yield pid, p, idx, t, resp
+
+
+def models_status(pid):
+    """Every model of one connected provider with what Aqua does with it: in the ladder, backup, limited, needs credit, or free but unused."""
+    cfg = load_cfg()
+    p = cfg["providers"].get(pid)
+    if not p or not has_access(p):
+        return {"ok": False, "error": "This provider has no key yet."}
+    now = time.time()
+    rows, seen = [], set()
+
+    def add(mid, state, detail=""):
+        if mid and mid not in seen:
+            seen.add(mid)
+            rows.append({"id": mid, "state": state, "detail": detail})
+
+    def flag(mid, base_state, base_detail):
+        key = pid + ":" + mid
+        if no_credit(key):
+            return "nocredit", "needs credit: skipped, nothing is charged"
+        lim = is_limited(key)
+        if lim:
+            return "limited", "%s limit, back in %s" % ("daily" if lim["kind"] == "daily" else "short", fmt_in(lim["until"] - now))
+        return base_state, base_detail
+
+    for t in p["tiers"]:
+        if t.get("model"):
+            s, d = flag(t["model"], "ladder", "in your ladder (%s)" % t["name"])
+            add(t["model"], s, d)
+    try:
+        pool = pool_models(pid, p["tiers"])
+    except Exception:
+        pool = []
+    for m in pool:
+        s, d = flag(m, "pool", "automatic backup, used when the ladder is limited")
+        add(m, s, d)
+    paid = 0
+    if pid == "openrouter":
+        for m in openrouter_catalog():
+            if not m["free"]:
+                paid += 1
+            elif m["id"] not in seen:
+                s, d = flag(m["id"], "available", "free%s, not used yet" % ("" if m["tools"] else " (cannot use tools)"))
+                add(m["id"], s if m["tools"] else "available", d)
+    return {"ok": True, "provider": p["label"], "rows": rows, "paid_count": paid, "can_add": len(p["tiers"]) < 6}
+
+
+def models_add(pid, model):
+    model = str(model or "").strip()
+    with _lock:
+        cfg = load_cfg()
+        p = cfg["providers"].get(pid)
+        if not p or not model:
+            raise ValueError("Unknown provider or model.")
+        if any(t.get("model") == model for t in p["tiers"]):
+            raise ValueError("That model is already in the ladder.")
+        if len(p["tiers"]) >= 6:
+            raise ValueError("The ladder holds six models at most. Every other model is used as backup anyway.")
+        p["tiers"].append({"name": "Extra %d" % len(p["tiers"]), "model": model, "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 0, "rpd": 0})
+        save_cfg(cfg)
+    _pool_cache.pop(pid, None)
+    return {"ok": True}
 
 
 def gateway_info():
@@ -3177,6 +3284,14 @@ class H(BaseHTTPRequestHandler):
         try:
             if u.path == "/v1/chat/completions":
                 return self._gateway_chat(b)
+            if u.path == "/api/models/status":
+                return self._send(200, models_status(b.get("provider") or load_cfg()["provider"]))
+            if u.path == "/api/models/add":
+                try:
+                    models_add(b.get("provider"), b.get("model"))
+                    return self._send(200, {"ok": True, "config": masked_cfg(load_cfg())})
+                except ValueError as e:
+                    return self._send(200, {"ok": False, "error": str(e)})
             if u.path == "/api/open-url":
                 if self.headers.get("X-Aqua-UI") != "1":           # a web page cannot send this header without our permission
                     return self._send(403, {"ok": False, "error": "Not allowed."})
