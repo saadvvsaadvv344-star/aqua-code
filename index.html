@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Aqua Code</title>
-<link rel="icon" type="image/png" href="/assets/logo.png">
+<link rel="icon" type="image/png" href="/assets/logo.png"><link rel="apple-touch-icon" href="/assets/logo.png">
 <style>
 :root{
   --bg:#08090b;--tx:#f2f3f5;--mut:#9ea3ad;--dim:#6b7078;
@@ -90,6 +90,9 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 /* ---------- layout ---------- */
 .app{position:relative;z-index:2;display:grid;grid-template-columns:276px minmax(0,1fr) 348px;gap:14px;padding:14px;height:100vh}
 .col{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.app{height:100vh;height:100dvh;min-width:0}
+/* very short or narrow windows: never clip the message box, let the column scroll instead */
+@media (max-height:640px),(max-width:520px){#center{overflow-y:auto;overflow-x:hidden}#center .chat{flex:0 0 auto;min-height:150px;max-height:none;overflow:visible}#center .comp{flex:none}}
 .brand{display:flex;align-items:center;gap:12px;padding:18px 18px 10px}
 .logo{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;color:#14161a;background:linear-gradient(150deg,var(--gold2),var(--gold) 55%,#8d929c);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.75),0 8px 24px -6px rgba(205,209,216,.7)}
 .logo svg{width:22px;height:22px;stroke-width:2.2}
@@ -307,9 +310,16 @@ pre.out{border-radius:12px;background:var(--code);margin-top:8px}
 .airow:hover{background:var(--g1)}.airow.on{background:var(--g1);border-color:var(--gb2)}
 .airow .aitx{flex:1}.aist{font-size:11px;color:var(--amber);font-weight:650;white-space:nowrap}.aist.ok{color:var(--green)}
 .aifoot{display:flex;gap:8px;padding:8px 6px 4px;border-top:1px solid var(--gb2);margin-top:6px}
-.pvp{position:fixed;top:14px;bottom:14px;right:14px;width:var(--pvw,54vw);z-index:25;display:flex;flex-direction:column;overflow:hidden;animation:pop .45s cubic-bezier(.2,.9,.3,1) both}
+.ask .askq{margin:10px 0 4px}.ask .aq{font-weight:600;margin-bottom:7px}.ask .opts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:7px}
+.ask .opt.on{background:var(--tx);color:var(--bg,#111);box-shadow:0 0 0 2px var(--teal,#4fd1c5)}
+.ask .aother{width:100%;box-sizing:border-box;background:rgba(127,127,127,.1);border:1px solid rgba(127,127,127,.3);border-radius:12px;padding:8px 12px;color:var(--tx);font:inherit;outline:0}
+.ask .aans{padding:4px 0 2px;color:var(--green)}
+#glassBtn.on{box-shadow:inset 0 0 0 2px var(--teal,#4fd1c5)}
+.resizing .lg{-webkit-backdrop-filter:blur(18px) saturate(1.4)!important;backdrop-filter:blur(18px) saturate(1.4)!important}
+:root{--pve:min(var(--pvw,54vw),max(340px,calc(100vw - 720px)))}
+.pvp{position:fixed;top:14px;bottom:14px;right:14px;width:var(--pve);z-index:25;display:flex;flex-direction:column;overflow:hidden;animation:pop .45s cubic-bezier(.2,.9,.3,1) both}
 .pvp[hidden]{display:none!important}
-@media (min-width:1241px){.app.pv{padding-right:calc(var(--pvw,54vw) + 28px);grid-template-columns:276px minmax(0,1fr)}.app.pv .right{display:none}}
+@media (min-width:1241px){.app.pv{padding-right:calc(var(--pve) + 28px);grid-template-columns:276px minmax(0,1fr)}.app.pv .right{display:none}}
 @media (max-width:1240px){.pvp{width:min(760px,calc(100vw - 28px))}}
 .pvp>.pv-resize{position:absolute;left:-7px;top:0;bottom:0;width:14px;cursor:col-resize;z-index:5}
 .pv-resize::after{content:"";position:absolute;left:5px;top:50%;width:4px;height:60px;margin-top:-30px;border-radius:4px;background:rgba(255,255,255,.35);opacity:0;transition:opacity .2s}.pv-resize:hover::after{opacity:1}
@@ -541,7 +551,7 @@ void main(){
       <div class="aipick" id="provSeg"></div>
       <button class="btn pill ic mbtn r" id="openRight" title="Credit and limits"><svg class="i"><use href="#i-coin"/></svg></button>
       <button class="btn pill" id="pvBtn" title="Preview a website or localhost"><svg class="i"><use href="#i-browser"/></svg>Preview</button>
-      <div class="fuse" id="hg"><button class="btn pill ic" id="themeBtn" title="Theme"><svg class="i"><use href="#i-sun"/></svg></button>
+      <div class="fuse" id="hg"><button class="btn pill ic" id="glassBtn" title="Liquid glass on / off"><svg class="i"><use href="#i-panel"/></svg></button><button class="btn pill ic" id="themeBtn" title="Theme"><svg class="i"><use href="#i-sun"/></svg></button>
       <button class="btn pill ic" id="setBtn" title="Settings"><svg class="i"><use href="#i-gear"/></svg></button></div>
     </div>
     <div class="chat" id="chat"><div class="chat-in" id="msgs"></div></div>
@@ -624,7 +634,7 @@ function setStatus(t){clearStatus();const d=el(`<div class="dots"><span></span><
 function addUser(t){clearHero();add(el(`<div class="bub">${esc(t)}</div>`,'msg user'))}
 function chipFor(ev){const n=(S.cur&&S.cur.n)||tiers().length;return `<span class="chip" style="color:${tcol(ev.tier,n)}"><i></i>${esc(ev.name)}</span>`}
 function addAssistant(ev){add(el(`<div class="who">${ev.provider?`<b style="color:var(--tx)">${esc(ev.provider)}</b>`:''}${chipFor(ev)}<span>${esc(ev.model)}</span><span>${fm(ev.cost||0)}</span></div><div class="bub">${md(ev.text)}</div>`,'msg ai'))}
-const TM={list_dir:['folder',a=>'List '+(a.path||'.')],read_file:['file',a=>'Read '+a.path+(a.start_line?' lines '+a.start_line+'-'+(a.end_line||'end'):'')],write_file:['edit',a=>'Write '+a.path],edit_file:['edit',a=>'Edit '+a.path],search:['search',a=>'Search "'+a.pattern+'"'+(a.path?' in '+a.path:'')],run_command:['term',a=>a.command||''],start_server:['browser',a=>'Start server: '+(a.command||'')],add_note:['edit',a=>'Note for the next AI: '+String(a.text||'').slice(0,70)],scaffold_3d:['browser',a=>'Set up the 3D kit'],show_3d:['browser',a=>'Show 3D model '+(a.path||'')],look_3d:['browser',a=>'Look at 3D model '+(a.path||'')],search_3d_models:['search',a=>'Search free 3D models: '+(a.query||'')],download_3d_model:['browser',a=>'Download 3D model '+String(a.url||'').split('/').pop()],request_stronger_model:['bolt',a=>'Asked for a stronger model']};
+const TM={list_dir:['folder',a=>'List '+(a.path||'.')],read_file:['file',a=>'Read '+a.path+(a.start_line?' lines '+a.start_line+'-'+(a.end_line||'end'):'')],write_file:['edit',a=>'Write '+a.path],edit_file:['edit',a=>'Edit '+a.path],search:['search',a=>'Search "'+a.pattern+'"'+(a.path?' in '+a.path:'')],run_command:['term',a=>a.command||''],start_server:['browser',a=>'Start server: '+(a.command||'')],add_note:['edit',a=>'Note for the next AI: '+String(a.text||'').slice(0,70)],scaffold_3d:['browser',a=>'Set up the 3D kit'],show_3d:['browser',a=>'Show 3D model '+(a.path||'')],look_3d:['browser',a=>'Look at 3D model '+(a.path||'')],look_page:['browser',a=>'Look at the page '+(a.url||a.path||'index.html')+(a.mobile?' (phone size)':'')],ask_user:['search',a=>'Asking you '+((a.questions||[]).length||1)+' question(s)'],search_3d_models:['search',a=>'Search free 3D models: '+(a.query||'')],download_3d_model:['browser',a=>'Download 3D model '+String(a.url||'').split('/').pop()],request_stronger_model:['bolt',a=>'Asked for a stronger model']};
 function toolBody(name,a){
   if(name==='edit_file')return `<div class="diff">${String(a.old||'').split('\n').map(l=>`<div class="d">- ${esc(l)}</div>`).join('')}${String(a.new||'').split('\n').map(l=>`<div class="a">+ ${esc(l)}</div>`).join('')}</div>`;
   if(name==='write_file')return `<div class="code"><div class="code-h"><span>${esc(a.path)}</span><button data-copy>Copy</button></div><pre><code>${esc(String(a.content||'').split('\n').slice(0,60).join('\n'))}</code></pre></div>`;
@@ -654,6 +664,23 @@ function addApproval(ev,live){
   add(d);
 }
 function resolveApproval(ev){const d=msgs.querySelector(`.appr[data-id="${ev.id}"]`);if(d)d.querySelector('.row').innerHTML=ev.ok?`<span style="color:var(--green)">${ic('check','width:14px;height:14px')} Allowed</span>`:`<span style="color:var(--red)">${ic('x','width:14px;height:14px')} Denied</span>`}
+function addAsk(ev){
+  const qs=ev.questions||[];
+  const d=el(`<h4>${ic('bolt')}${qs.length>1?'A few questions before I start':'A question before I start'}</h4>`+qs.map((q,i)=>`<div class="askq" data-i="${i}"><div class="aq">${esc(q.question)}</div>${(q.options||[]).length?`<div class="opts">${q.options.map(o=>`<button type="button" class="btn ghost opt" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div>`:''}<input class="aother" placeholder="${(q.options||[]).length?'Or type your own answer':'Type your answer'}"></div>`).join('')+`<div class="row"><button class="btn gold" data-send>${ic('check')}Send answers</button><button class="btn ghost" data-skip>Let the AI decide</button></div>`,'appr ask');
+  d.dataset.id=ev.id;
+  if(!S.runId){d.querySelector('.row').innerHTML='<span class="mut">Expired</span>'}
+  d.querySelectorAll('.askq').forEach(box=>{const q=qs[+box.dataset.i]||{};box.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+    if(q.multi)b.classList.toggle('on');else{const was=b.classList.contains('on');box.querySelectorAll('.opt').forEach(x=>x.classList.remove('on'));if(!was)b.classList.add('on')}})});
+  const send=async skip=>{
+    const answers=skip?null:[...d.querySelectorAll('.askq')].map((box,i)=>{const sel=[...box.querySelectorAll('.opt.on')].map(b=>b.dataset.o),t=box.querySelector('.aother').value.trim();const all=t?sel.concat([t]):sel;return{question:qs[i].question,answer:qs[i].multi?all:all.join(', ')}});
+    d.querySelector('.row').innerHTML='<span class="mut">Sending...</span>';await api('/api/approve',skip?{run:S.runId,id:ev.id,ok:false}:{run:S.runId,id:ev.id,ok:true,answers});
+  };
+  const sb=d.querySelector('[data-send]'),kb=d.querySelector('[data-skip]');if(sb)sb.onclick=()=>send(false);if(kb)kb.onclick=()=>send(true);
+  add(d);
+}
+function resolveAsk(ev){const d=msgs.querySelector(`.ask[data-id="${ev.id}"]`);if(!d)return;const a=ev.answers||[];
+  d.querySelectorAll('.opt,.aother,.row').forEach(x=>x.remove());
+  d.querySelectorAll('.askq').forEach((box,i)=>{const v=a[i]&&a[i].answer;const t=Array.isArray(v)?v.join(', '):v;const s=document.createElement('div');s.className='aans';s.innerHTML=a.length?(t?esc(t):'<span class="mut">no answer</span>'):'<span class="mut">skipped, the AI decides</span>';box.appendChild(s)})}
 function addEscalate(ev){const n=(S.cur&&S.cur.n)||tiers().length;const t=tiers();
   add(el(`<div class="arrow"><span class="chip" style="color:${tcol(ev.frm,n)}"><i></i>${esc(t[ev.frm]?.name||'')}</span>${ic('arrow')}<span class="chip" style="color:${tcol(ev.to,n)}"><i></i>${esc(ev.name)}</span></div><div><b>${/limit/i.test(ev.reason)?'Model limit reached, switching':ev.to>ev.frm?'Handing over to a stronger model':'Switching to another model'}</b><small>${esc(ev.reason)} - now using ${esc(ev.model)}</small></div>`,'esc'))}
 /* a small line each time a model is called, so you always see which AI is working */
@@ -664,6 +691,13 @@ function addModelTag(ev){
 }
 function addFailover(ev){
   add(el(`<div class="arrow"><span class="chip" style="color:var(--amber)"><i></i>${esc(ev.frm)}</span>${ic('arrow')}<span class="chip" style="color:var(--green)"><i></i>${esc(ev.to)}</span></div><div><b>Switching to another AI</b><small>${esc(ev.reason)} - now using ${esc(ev.to)} (${esc(ev.model)})</small></div>`,'esc'));
+}
+function fmtIn(sec){sec=Math.max(0,Math.round(sec));if(sec<90)return sec+' s';if(sec<5400)return Math.round(sec/60)+' min';return Math.floor(sec/3600)+' h '+String(Math.floor(sec%3600/60)).padStart(2,'0')+' min'}
+function clockAt(ts){const d=new Date(ts*1000),n=new Date();const t=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});if(d.toDateString()===n.toDateString())return t;const tm=new Date(n.getTime()+864e5);return (d.toDateString()===tm.toDateString()?'tomorrow ':d.toLocaleDateString([], {weekday:'short'})+' ')+t}
+function limitOf(pid,model){const L=S.usage&&S.usage.limits;if(!L)return null;const now=Date.now()/1000;return (L.blocked||[]).find(b=>b.pid===pid&&b.model===model&&b.until>now)||null}
+function addLimit(ev){
+  const left=ev.until-Date.now()/1000,daily=ev.kind==='daily';
+  add(el(`<div class="arrow"><span class="chip" style="color:var(--amber)"><i></i>${esc(ev.provider)}</span></div><div><b>${daily?'Daily limit reached':'Limit reached for now'}: ${esc(ev.model)}</b><small>It comes back in about ${fmtIn(left)} (at ${clockAt(ev.until)}). Aqua uses another model meanwhile.</small></div>`,'esc'));
 }
 async function setLevel(l){
   if(!S.cfg||l===S.cfg.level){renderLevel();return}
@@ -702,7 +736,10 @@ function handle(ev){
     case 'tool_result':updateTool(ev);break;
     case 'approval':clearStatus();addApproval(ev);break;
     case 'approval_result':resolveApproval(ev);break;
+    case 'ask':clearStatus();addAsk(ev);break;
+    case 'ask_result':resolveAsk(ev);break;
     case 'failover':clearStatus();addFailover(ev);break;
+    case 'limit':clearStatus();addLimit(ev);break;
     case 'escalate':clearStatus();addEscalate(ev);if(S.cur)S.cur.tier=ev.to;renderRight();break;
     case 'usage':S.usage=ev.usage;S.sessCost=ev.session_cost;renderRight();renderHead();break;
     case 'preview':if(ev.t>Date.now()/1000-45&&(!ev.auto||!PV.closedByUser)&&!(ev.auto&&PV.url===ev.url))pvGo(ev.url);break;
@@ -790,7 +827,10 @@ function renderRight(){
   const fr=!!prov().free;let used=0,cap=0;t.forEach(x=>{const m=(td.models||{})[pid+':'+x.model];used+=m?m.requests:0;if(x.rpd>0)cap+=x.rpd});const ff=cap>0?used/cap:0;
   h+=fr?`<div class="card"><h3>Free tier <span class="chip" style="color:var(--green)"><i></i>No charge</span></h3><div class="ringwrap">${ringHTML(ff,String(used),cap>0?'of '+cap+' requests':'requests today',ff>=.9?'var(--red)':ff>=.7?'var(--amber)':'var(--green)')}
     <div class="kv"><div>Tokens in<b>${fn(td.in)}</b></div><div>Tokens out<b>${fn(td.out)}</b></div><div>Cost<b>$0.00</b></div></div></div>
-    <div class="step-note" style="margin-top:12px">Free limits are per model and reset at midnight (Gemini: Pacific time, OpenRouter: UTC). When one model is used up, Aqua switches to another that still has quota.</div></div>`:`<div class="card"><h3>Spend today</h3><div class="ringwrap">${ringHTML(db>0?frac:0,fm(td.cost),db>0?'of '+fm(db):'no limit',col)}
+    <div class="step-note" style="margin-top:12px">${(()=>{const R=((u.limits||{}).resets||{})[pid];const now=Date.now()/1000;const blk=((u.limits||{}).blocked||[]).filter(b=>b.until>now).sort((a,b)=>a.until-b.until);
+      let s='';if(R&&R.at)s+=`<b>Daily limit restarts in ${fmtIn(R.at-now)}</b> (at ${clockAt(R.at)} your time, ${esc(R.label)}).<br>`;else s+='Daily limits restart about 24 hours after you first used them (check the provider page for the exact time).<br>';
+      if(blk.length)s+=`<span style="color:var(--amber)">Limited now: ${blk.map(b=>esc(b.provider)+' '+esc(b.model)+' back in '+fmtIn(b.until-now)).join('; ')}.</span><br>`;
+      return s+'Free limits are per model. When one model is used up, Aqua switches to another that still has quota.'})()}</div></div>`:`<div class="card"><h3>Spend today</h3><div class="ringwrap">${ringHTML(db>0?frac:0,fm(td.cost),db>0?'of '+fm(db):'no limit',col)}
     <div class="kv"><div>Requests<b>${td.requests}</b></div><div>Tokens in<b>${fn(td.in)}</b></div><div>Tokens out<b>${fn(td.out)}</b></div><div>All time<b>${fm(u.total_cost)}</b></div></div></div>
     ${tb>0?`<div style="margin-top:14px"><div class="row" style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--mut);margin-bottom:5px"><span>Total budget</span><span>${fm(u.total_cost)} / ${fm(tb)}</span></div><div class="bar" style="--c:${tf>=1?'var(--red)':'var(--teal)'}"><i style="width:${Math.min(100,tf*100)}%"></i></div></div>`:''}
     ${u.total_saved>0.00005?`<div class="save">${ic('bolt','width:18px;height:18px')}<div><b>Saved ${fm(u.total_saved)}</b> by starting on cheaper models instead of always using ${esc(t[t.length-1].name)}.</div></div>`:''}</div>`;
@@ -802,7 +842,8 @@ function renderRight(){
       <div class="pr">$${x.in} in - $${x.out} out per 1M tokens</div>
       <div class="row"><span>${x.rpd>0?`${m.requests} / ${x.rpd} requests today`:`${m.requests} requests today (no fixed cap)`}</span><span>${fm(m.cost)}</span></div>
       <div class="bar" style="--c:${rp>=.9?'var(--red)':cc}"><i style="width:${x.rpd>0?Math.min(100,rp*100):Math.min(100,m.requests*4)}%"></i></div>
-      <div class="row"><span>${x.rpm>0?`${rn} / ${x.rpm} per minute`:'rate limit: dynamic'}</span><span>${fn(m.in)} in - ${fn(m.out)} out</span></div></div></div>`}).join('')+`</div>`;
+      <div class="row"><span>${x.rpm>0?`${rn} / ${x.rpm} per minute`:'rate limit: dynamic'}</span><span>${fn(m.in)} in - ${fn(m.out)} out</span></div>
+      ${(()=>{const L=limitOf(pid,x.model);return L?`<div class="row" style="color:var(--amber)"><span>${L.kind==='daily'?'Daily limit reached':'Limited for now'}: back in ${fmtIn(L.until-Date.now()/1000)}</span><span>at ${clockAt(L.until)}</span></div>`:''})()}</div></div>`}).join('')+`</div>`;
   h+=`<div class="card"><h3>How credit is saved</h3><div class="step-note">1. Every task starts on <b>${esc(t[Math.min(c.start_tier,t.length-1)].name)}</b>, the cheapest model.<br>2. After <b>${c.esc_errors}</b> failing steps in a row, <b>${c.esc_steps}</b> steps without finishing, a rate limit, or when the model asks, it hands over to the next tier with the full context.<br>3. It never goes above <b>${esc(t[Math.min(c.max_tier,t.length-1)].name)}</b> and never past your budget.<br>4. A syntax check after every file write catches weak output early.${c.auto_escalate?'':'<br><b style="color:var(--amber)">Auto-escalation is off.</b>'}</div></div>`;
   h+=`<div class="card"><h3>Account balance</h3>`+(S.balance?`<div class="step-note">${S.balance}</div>`:'')+`<button class="btn ghost" id="balBtn" style="margin-top:${S.balance?10:0}px">${ic('coin')}Check ${esc(prov().label)} balance</button></div>`;
   $('#rbody').innerHTML=h;const kb=$('#keyBtn');if(kb)kb.onclick=()=>{prov().has_key?openSettings():openWelcome()};const bk=$('#bkBtn');if(bk)bk.onclick=()=>openWelcome();
@@ -1161,6 +1202,9 @@ $('#notesBtn').onclick=showNotes;
 $('#openLeft').onclick=()=>$('#left').classList.toggle('show');
 $('#openRight').onclick=()=>$('#right').classList.add('show');$('#closeRight').onclick=()=>$('#right').classList.remove('show');
 function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('ac-theme',t)}catch(e){}$('#themeBtn').innerHTML=ic(t==='dark'?'sun':'moon')}
+function glassBtnSync(){const b=$('#glassBtn');if(b){b.classList.toggle('on',FX.mode==='off');b.title=FX.mode==='off'?'Liquid glass is OFF (click to turn on)':'Liquid glass is on (click to turn off)'}}
+$('#glassBtn').onclick=()=>{FX.mode=FX.mode==='off'?'lite':'off';try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}FX.apply();glassBtnSync();toast(FX.mode==='off'?'Liquid glass off: plain look':'Liquid glass on')};
+setTimeout(glassBtnSync,0);
 $('#themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 (async()=>{let t='dark';try{t=localStorage.getItem('ac-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){}setTheme(t);
@@ -1171,6 +1215,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
   }).catch(()=>{}),3000);
   await loadState();FX.apply();showHero();loadTree();if(needKey())openWelcome();
   setInterval(()=>{if(!S.runId)loadState()},20000);
+  setInterval(()=>{const L=S.usage&&S.usage.limits;if(!document.hidden&&L&&((L.blocked||[]).length||Object.keys(L.resets||{}).length)){const rb=$('#rbody'),y=rb?rb.scrollTop:0;renderRight();if(rb)rb.scrollTop=y}},30000);
 })();
 
 /* ================= liquid glass engine ================= */
@@ -1213,7 +1258,9 @@ FX.apply=function(){
     if(FX.ok&&FX.mode==='full'){buildFilter(el)}else{el.style.backdropFilter='';el.style.webkitBackdropFilter=''}
   });
 };
-FX.ro=new ResizeObserver(es=>{let t;clearTimeout(FX._t);FX._t=setTimeout(FX.apply,60)});
+FX.ro=new ResizeObserver(es=>{clearTimeout(FX._t);FX._t=setTimeout(()=>{if(!document.documentElement.classList.contains('resizing'))FX.apply()},120)});
+/* while the window is being dragged bigger or smaller, use cheap plain blur; rebuild the real glass once it stops (no flicker, no lag) */
+(()=>{let t=0;addEventListener('resize',()=>{const r=document.documentElement.classList;r.add('resizing');clearTimeout(t);t=setTimeout(()=>{r.remove('resizing');FX.apply()},220)})})();
 document.querySelectorAll('.lg').forEach(el=>FX.ro.observe(el));
 new MutationObserver(()=>{document.querySelectorAll('.lg').forEach(el=>{if(!el._ro){el._ro=1;FX.ro.observe(el)}})}).observe(document.body,{childList:true,subtree:true});
 /* light that follows the pointer: only in Full mode, only while the pointer moves, only on the panel under it */
@@ -1270,12 +1317,12 @@ void main(){vec2 uv=gl_FragCoord.xy/R;vec2 p=(gl_FragCoord.xy-.5*R)/R.y;float e=
     const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
     const al=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
     this.uT=gl.getUniformLocation(pr,'T');this.uD=gl.getUniformLocation(pr,'D[0]');this.uL=gl.getUniformLocation(pr,'L');this.uR=gl.getUniformLocation(pr,'R');
-    this.cv=cv;this.gl=gl;this.resize();addEventListener('resize',()=>this.resize());
+    this.cv=cv;this.gl=gl;this.resize();let rz=0;addEventListener('resize',()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(()=>this.resize())});
     const addp=(e,amp)=>{if(!this.on)return;const H=innerHeight;this.drop((e.clientX-innerWidth/2)/H,-(e.clientY-H/2)/H,amp)};
     addEventListener('pointermove',e=>{const n=performance.now();if(n-this.ptLast>130){this.ptLast=n;addp(e,.2)}},{passive:true});
     addEventListener('pointerdown',e=>addp(e,.8),{passive:true});
     return true},
-  resize(){if(!this.cv)return;const s=Math.min(1,960/innerWidth);const w=Math.max(320,Math.round(innerWidth*s*.7)),h=Math.max(180,Math.round(innerHeight*s*.7));this.cv.width=w;this.cv.height=h;this.gl.viewport(0,0,w,h);this.gl.uniform2f(this.uR,w,h)},
+  resize(){if(!this.cv)return;const s=Math.min(1,960/innerWidth);const w=Math.max(320,Math.round(innerWidth*s*.7)),h=Math.max(180,Math.round(innerHeight*s*.7));this.cv.width=w;this.cv.height=h;this.gl.viewport(0,0,w,h);this.gl.uniform2f(this.uR,w,h);this.frames=0;this.ema=33;if(this.on)this.gl.drawArrays(this.gl.TRIANGLE_STRIP,0,4)},
   drop(x,y,amp){const T=(performance.now()-this.t0)/1000;this.drops.push([x,y,T,amp]);if(this.drops.length>12)this.drops.shift()},
   frame(now){
     this.raf=requestAnimationFrame(t=>this.frame(t));

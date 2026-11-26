@@ -42,6 +42,9 @@ elif [ -d "$HOME/.local/share/applications" ] || mkdir -p "$HOME/.local/share/ap
   printf '[Desktop Entry]\nType=Application\nName=Aqua Code\nComment=Your own coding agent\nExec=%s %s/aqua_app.py\nPath=%s\nIcon=%s/assets/logo.png\nTerminal=false\nCategories=Development;\n' "$PY" "$DEST" "$DEST" "$DEST" > "$HOME/.local/share/applications/aqua-code.desktop"
 fi
 
+if [ "$(uname)" = "Darwin" ]; then
+  echo "On first launch Aqua adds an 'Aqua Code' app with the logo to ~/Applications (Launchpad and Spotlight find it; drag it to the Dock)."
+fi
 say "Installed in $DEST"
 echo "Start it with:   cd \"$DEST\" && $PY aqua_app.py"
 echo "On first launch it asks for a free API key (Gemini, Groq, Mistral...) or lets you try without one."

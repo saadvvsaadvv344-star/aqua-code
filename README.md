@@ -100,6 +100,14 @@ The **Preview** button opens a live pane next to the chat (drag its edge to resi
 Aqua keeps a shared notebook for each project at `.aqua/NOTES.md` inside your workspace (open it with the file button in the sidebar). After each task Aqua adds an automatic log (the request, which AI did it, files changed, commands run, problems, outcome), every AI can also save its own note with the `add_note` tool (what it did, what is left), and every switch between models or providers is logged. The latest notes are put in front of **every** AI on every call, so when Gemini runs out and Groq takes over, or you start a new chat, the next AI already knows what happened. You can read or clear the notes any time.
 
 **Projects never mix.** One workspace folder is one project. Its chats, its notes and what the AIs are told all belong to that folder only; switching the workspace folder in Settings starts clean, and a chat from another project is never continued. Nothing carries over unless you ask: in the notes window, **Use notes from another project** copies that project's notes in on purpose. (File tools are limited to the workspace; shell commands the AI runs are not sandboxed, so the AI is told to stay inside the project, but treat that as a rule, not a wall.)
+## The AI asks, looks and fixes (like a good colleague)
+
+- **It asks you questions.** If your request is vague ("make me a website"), the AI first asks 1 to 4 short questions with buttons (what kind, which style, which features) and then builds what you chose. Click "Let the AI decide" to skip. Tell it "just do it" and it will not ask.
+- **It looks at the preview.** The `look_page` tool opens the page it built (desktop or phone size) in a hidden browser and returns a screenshot (models that can see images), the browser console errors, the visible text, and layout problems such as content wider than the screen. It fixes what it finds and looks again, so it is much better at fixing bugs.
+- **When do limits come back?** The credit panel shows when each limit restarts ("Daily limit restarts in 4 h 43 min, at 09:00 your time"; Gemini resets at midnight Pacific time, OpenRouter at midnight UTC), and when a model hits its limit the chat tells you how long until it is back.
+- **Liquid glass on/off** is the button next to the theme button in the top bar (and "Glass quality" in Settings).
+- **Mac:** on first launch Aqua adds an "Aqua Code" app with the logo to `~/Applications`. Resizing the window is smooth now (plain blur while you drag, real glass when you stop) and very small windows scroll instead of cutting off the message box.
+
 ## 3D modeling (every AI can do it)
 
 Ask for anything 3D ("make a low-poly castle", "download a duck model") and every provider gets the same 3D tools:

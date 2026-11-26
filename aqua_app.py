@@ -105,7 +105,38 @@ def hot_reload(srv):
     return new
 
 
+def ensure_mac_app():
+    """macOS: make a real 'Aqua Code' app (with the logo) in ~/Applications, so it shows up in Launchpad, Spotlight and the Dock."""
+    if sys.platform != "darwin":
+        return
+    try:
+        app = os.path.join(os.path.expanduser("~"), "Applications", "Aqua Code.app")
+        exe = os.path.join(app, "Contents", "MacOS", "AquaCode")
+        script = '#!/bin/bash\ncd "%s"\nexec "%s" aqua_app.py\n' % (ROOT, sys.executable)
+        if os.path.isfile(exe) and open(exe).read() == script:
+            return
+        os.makedirs(os.path.dirname(exe), exist_ok=True)
+        os.makedirs(os.path.join(app, "Contents", "Resources"), exist_ok=True)
+        with open(exe, "w") as f:
+            f.write(script)
+        os.chmod(exe, 0o755)
+        icns = os.path.join(ROOT, "assets", "aqua.icns")
+        if os.path.isfile(icns):
+            shutil.copy2(icns, os.path.join(app, "Contents", "Resources", "aqua.icns"))
+        with open(os.path.join(app, "Contents", "Info.plist"), "w") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+                    '<plist version="1.0"><dict><key>CFBundleName</key><string>Aqua Code</string><key>CFBundleDisplayName</key><string>Aqua Code</string>'
+                    '<key>CFBundleIdentifier</key><string>com.aquacode.app</string><key>CFBundleExecutable</key><string>AquaCode</string>'
+                    '<key>CFBundleIconFile</key><string>aqua</string><key>CFBundlePackageType</key><string>APPL</string>'
+                    '<key>CFBundleShortVersionString</key><string>1.1</string><key>LSMinimumSystemVersion</key><string>10.13</string></dict></plist>\n')
+        subprocess.call(["touch", app])
+        log("created", app)
+    except Exception as e:
+        log("mac app bundle failed", e)
+
+
 def main():
+    ensure_mac_app()
     if is_aqua_running():            # already running: just open another window
         log("server already running")
         open_window()

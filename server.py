@@ -302,6 +302,104 @@ def today():
     return datetime.date.today().isoformat()
 
 
+# --- when do limits come back? --------------------------------------------------------------
+LIMIT_UNTIL = {}       # "prov:model" -> {"until": epoch, "kind": "daily"|"rate", "provider": label, "model": name}
+LIMIT_BASE = {}        # "prov:model" -> (day, requests already counted when the provider's limit came back)
+DAILY_RESET = {"gemini": ("America/Los_Angeles", "midnight Pacific time"), "openrouter": ("UTC", "midnight UTC")}
+
+
+def _nth_sunday(year, month, n):
+    d = datetime.date(year, month, 1)
+    d += datetime.timedelta(days=(6 - d.weekday()) % 7)
+    return d + datetime.timedelta(weeks=n - 1)
+
+
+def pacific_offset(now):
+    """-7 during US daylight saving time (2nd Sunday of March to 1st Sunday of November), else -8 (no tz database needed)"""
+    y = datetime.datetime.utcfromtimestamp(now).year
+    start = datetime.datetime.combine(_nth_sunday(y, 3, 2), datetime.time(10, 0)).replace(tzinfo=datetime.timezone.utc).timestamp()
+    end = datetime.datetime.combine(_nth_sunday(y, 11, 1), datetime.time(9, 0)).replace(tzinfo=datetime.timezone.utc).timestamp()
+    return -7 if start <= now < end else -8
+
+
+def provider_reset_at(pid, now=None):
+    """epoch of the next daily reset for providers whose rule is known, else None"""
+    rule = DAILY_RESET.get(pid)
+    if not rule:
+        return None
+    now = now or time.time()
+    off = pacific_offset(now) if rule[0] != "UTC" else 0
+    local = datetime.datetime.utcfromtimestamp(now + off * 3600)
+    nxt = datetime.datetime.combine(local.date() + datetime.timedelta(days=1), datetime.time(0, 0))
+    return nxt.replace(tzinfo=datetime.timezone.utc).timestamp() - off * 3600
+
+
+def next_local_midnight(now=None):
+    now = now or time.time()
+    d = datetime.datetime.fromtimestamp(now)
+    return time.mktime((d.date() + datetime.timedelta(days=1)).timetuple())
+
+
+def retry_seconds(msg):
+    """Gemini and others say 'retry in 21.5s' / 'try again in 2m3s' / retryDelay: 21s"""
+    m = re.search(r"(?:retry|try again)[^0-9]{0,20}(?:(\d+)\s*h)?\s*(?:(\d+)\s*m(?!s))?\s*(?:(\d+(?:\.\d+)?)\s*s)?", msg or "", re.I)
+    if m and any(m.groups()):
+        return int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + float(m.group(3) or 0)
+    m = re.search(r'retryDelay"?\s*:\s*"?(\d+(?:\.\d+)?)s', msg or "")
+    return float(m.group(1)) if m else 0.0
+
+
+def note_limit(pid, label, model, msg="", daily=None):
+    """remember that this model is limited and when it comes back"""
+    now = time.time()
+    if daily is None:
+        daily = bool(re.search(r"per.?day|daily|limit:\s*0|free.?models?.*per.?day|exceeded your current quota|quota exceeded", msg or "", re.I)) and retry_seconds(msg) < 3600
+        if retry_seconds(msg) > 3600:
+            daily = True
+    if daily:
+        until = provider_reset_at(pid, now) or next_local_midnight(now)
+        kind = "daily"
+    else:
+        until = now + max(15.0, min(retry_seconds(msg) or 60.0, 3600.0))
+        kind = "rate"
+    LIMIT_UNTIL[pid + ":" + model] = {"until": until, "kind": kind, "provider": label, "model": model, "pid": pid}
+    return until
+
+
+def is_limited(key):
+    e = LIMIT_UNTIL.get(key)
+    if not e:
+        return None
+    if e["until"] <= time.time():
+        LIMIT_UNTIL.pop(key, None)
+        if e["kind"] == "daily":
+            LIMIT_BASE[key] = (today(), day_rec(today())["models"].get(key, {}).get("requests", 0))
+        return None
+    return e
+
+
+def limits_snapshot(cfg):
+    now = time.time()
+    out = {"blocked": [], "resets": {}}
+    for k in list(LIMIT_UNTIL):
+        e = is_limited(k)
+        if e:
+            out["blocked"].append({"provider": e["provider"], "model": e["model"], "until": e["until"], "kind": e["kind"], "pid": e["pid"]})
+    for pid, v in cfg["providers"].items():
+        if pid in DAILY_RESET and has_access(v):
+            out["resets"][pid] = {"at": provider_reset_at(pid, now), "label": DAILY_RESET[pid][1]}
+    return out
+
+
+def fmt_in(sec):
+    sec = int(max(0, sec))
+    if sec < 90:
+        return "%d s" % sec
+    if sec < 5400:
+        return "%d min" % round(sec / 60.0)
+    return "%d h %02d min" % (sec // 3600, (sec % 3600) // 60)
+
+
 def day_rec(day):
     return usage["days"].setdefault(day, {"requests": 0, "in": 0, "out": 0, "cost": 0.0, "saved": 0.0, "models": {}})
 
@@ -348,6 +446,7 @@ def usage_snapshot(cfg):
         "today": d, "total_cost": total_cost(), "total_saved": total_saved(),
         "daily_budget": cfg["daily_budget"], "total_budget": cfg["total_budget"],
         "rpm_now": {k: len([x for x in v if x > time.time() - 60]) for k, v in recent.items()},
+        "limits": limits_snapshot(cfg), "now": time.time(),
     }
 
 
@@ -454,6 +553,14 @@ TOOLS = [
      "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "download_3d_model", "description": "Download a .glb/.gltf/.obj/.stl from an allowed site (GitHub, threejs.org...) into models/.",
      "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "name": {"type": "string"}}, "required": ["url"]}}},
+    {"type": "function", "function": {"name": "look_page", "description": "LOOK at a web page you built or are fixing (the Preview or a localhost dev server): returns a screenshot (if your model can see images), the browser console errors, and the visible text. Use it after building a page and before and after fixing a bug. mobile=true checks a phone size.",
+     "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "workspace path like index.html, or http://localhost:PORT/..."},
+                                                      "mobile": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"},
+                                                      "wait_ms": {"type": "integer", "description": "wait for scripts/animations, default 2500"}}, "required": []}}},
+    {"type": "function", "function": {"name": "ask_user", "description": "Ask the user 1-4 short questions before you build when the request is vague or an important choice is theirs (what kind, which stack, design style, features, who it is for). Give each question 2-4 short options; the user can also type their own answer. Do not ask what you can reasonably decide yourself.",
+     "parameters": {"type": "object", "properties": {"questions": {"type": "array", "items": {"type": "object", "properties": {
+         "question": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "multi": {"type": "boolean", "description": "true if several options can be picked"}},
+         "required": ["question"]}}}, "required": ["questions"]}}},
     {"type": "function", "function": {"name": "add_note", "description": "Save a short note about what you did, decisions, problems or next steps, so any other AI that continues this project knows what happened.",
      "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
     {"type": "function", "function": {"name": "start_server", "description": "Start a long-running dev server in the background (e.g. python -m http.server 8000, npm run dev) and show it in the Preview pane. Use run_command for anything that finishes.",
@@ -635,7 +742,7 @@ def tool_run_command(ws, a):
     return "Exit code 0\n" + out
 
 
-TOOL_FUNCS = {"scaffold_3d": lambda ws, a: None, "show_3d": lambda ws, a: None, "look_3d": lambda ws, a: None, "search_3d_models": lambda ws, a: None, "download_3d_model": lambda ws, a: None, "add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
+TOOL_FUNCS = {"ask_user": lambda ws, a: None, "look_page": lambda ws, a: None, "scaffold_3d": lambda ws, a: None, "show_3d": lambda ws, a: None, "look_3d": lambda ws, a: None, "search_3d_models": lambda ws, a: None, "download_3d_model": lambda ws, a: None, "add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
               "edit_file": tool_edit_file, "search": tool_search, "run_command": tool_run_command}
 
 
@@ -738,6 +845,12 @@ def system_prompt(ws, extra=""):
             "failing, call request_stronger_model with a reason instead of guessing. Other AIs may work on this project after you "
             "(the user switches models and providers), so when the work is complete call add_note once with 1-3 short lines "
             "(what you did, what is left, anything the next AI must know), then answer with a brief summary and no tool call. "
+            "SEEING: for anything with a screen (web pages, games, UIs) you can really look at it: after you build it, and before and after you fix a visual or runtime bug, "
+            "call look_page (screenshot if your model sees images, plus browser console errors and visible text). Fix every console error and visible problem, then look again, at most 3 rounds. "
+            "ASKING: like a good colleague, when the request is vague or has important open choices (what kind of app, which stack, design style, "
+            "main features, who it is for), call ask_user ONCE at the start with 1-4 short questions (2-4 short options each) before you build. "
+            "Do not ask about things you can decide yourself, and do not ask when the request is already clear, when the user said to just do it, or when the notes already answer it. "
+            "After the answers, continue without asking again unless you are truly blocked. "
             "This workspace is ONE separate project: use only its files and the notes below. Never assume details from other projects, "
             "folders or earlier chats about something else; if the user wants another project's notes they will import them."
             % ("Windows (PowerShell)" if os.name == "nt" else "Linux/macOS (bash)", ws))
@@ -764,9 +877,16 @@ def wait_limits(run, cfg, pid, tiers, ti):
     """Honour RPM (sleep) and RPD (signal) before each request. Returns 'ok' or 'daily'."""
     t = tiers[ti]
     key = pid + ":" + t["model"]
+    lim = is_limited(key)
+    if lim and lim["kind"] == "daily":
+        return "daily"
     if t.get("rpd", 0) > 0:
         n = day_rec(today())["models"].get(key, {}).get("requests", 0)
+        b = LIMIT_BASE.get(key)
+        if b and b[0] == today():
+            n = max(0, n - b[1])                    # the provider's own daily reset already passed
         if n >= t["rpd"]:
+            note_limit(pid, cfg["providers"][pid]["label"], t["model"], daily=True)
             return "daily"
     if t.get("rpm", 0) > 0:
         dq = recent[key]
@@ -803,7 +923,7 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
         nov = run.no_vision = set()
     if img and (pid + ":" + t["model"]) not in nov:
         payload["messages"].append({"role": "user", "content": [
-            {"type": "text", "text": "[aqua] This is the picture of your 3D model from look_3d (3/4, front, side, top). Judge it honestly and fix what looks wrong."},
+            {"type": "text", "text": "[aqua] " + (getattr(run, "look_text", None) or "This is the picture of your 3D model from look_3d (3/4, front, side, top). Judge it honestly and fix what looks wrong.")},
             {"type": "image_url", "image_url": {"url": "data:image/png;base64," + img}}]})
         sent_img = True
     else:
@@ -830,6 +950,40 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
             raise
 
 
+def tool_ask_user(run, a):
+    qs = []
+    raw = a.get("questions")
+    if not isinstance(raw, list):
+        raw = [{"question": a.get("question"), "options": a.get("options")}] if a.get("question") else []
+    for q in raw[:4]:
+        if isinstance(q, str):
+            q = {"question": q}
+        if not isinstance(q, dict) or not str(q.get("question") or "").strip():
+            continue
+        opts = [str(o)[:80] for o in (q.get("options") or []) if str(o).strip()][:5]
+        qs.append({"question": str(q["question"])[:300], "options": opts, "multi": bool(q.get("multi"))})
+    if not qs:
+        return "No questions were given. Decide sensible defaults yourself."
+    aid = uuid.uuid4().hex[:8]
+    ev = threading.Event()
+    run.pending[aid] = {"ev": ev, "ok": False, "answers": None}
+    run.emit("ask", id=aid, questions=qs)
+    while not ev.wait(0.5):
+        if run.stop:
+            return "Cancelled."
+    ans = run.pending[aid].get("answers")
+    run.emit("ask_result", id=aid, answers=ans or [])
+    if not ans:
+        return "The user skipped the questions. Pick sensible defaults yourself, say briefly what you assumed, and continue."
+    lines = []
+    for i, q in enumerate(qs):
+        x = ans[i] if i < len(ans) and isinstance(ans[i], dict) else {}
+        v = x.get("answer")
+        v = ", ".join(str(t) for t in v) if isinstance(v, list) else str(v or "").strip()
+        lines.append("Q: %s\nA: %s" % (q["question"], v or "(no answer: choose yourself)"))
+    return "The user answered:\n" + "\n".join(lines) + "\nContinue with these choices. Do not ask the same things again."
+
+
 def exec_tool(run, cfg, name, args):
     """Returns (text, is_error, ui_extra)."""
     ws = cfg["workspace"]
@@ -839,6 +993,8 @@ def exec_tool(run, cfg, name, args):
     if name == "add_note":
         append_note(ws, getattr(run, "who", "an AI"), str(args.get("text", "")))
         return "Note saved for the next AI.", False, None
+    if name == "ask_user":
+        return tool_ask_user(run, args), False, None
     needs = (name in ("run_command", "start_server", "download_3d_model") and cfg["approval"] in ("ask", "edits")) or \
             (name in WRITE_TOOLS and cfg["approval"] == "ask")
     if needs:
@@ -862,6 +1018,8 @@ def exec_tool(run, cfg, name, args):
             return tool_show_3d(run, ws, args), False, None
         if name == "look_3d":
             return tool_look_3d(run, ws, args), False, None
+        if name == "look_page":
+            return tool_look_page(run, ws, args), False, None
         if name == "search_3d_models":
             return tool_search_3d(args), False, None
         if name == "download_3d_model":
@@ -877,8 +1035,16 @@ def exec_tool(run, cfg, name, args):
 
 
 def quota_left_for(pid, t):
+    key = pid + ":" + t["model"]
+    lim = is_limited(key)
+    if lim and lim["kind"] == "daily":
+        return False
     r = t.get("rpd", 0)
-    return r <= 0 or day_rec(today())["models"].get(pid + ":" + t["model"], {}).get("requests", 0) < r
+    n = day_rec(today())["models"].get(key, {}).get("requests", 0)
+    b = LIMIT_BASE.get(key)
+    if b and b[0] == today():
+        n = max(0, n - b[1])
+    return r <= 0 or n < r
 
 
 def is_limit_error(e):
@@ -1004,7 +1170,9 @@ def agent_loop(run, user_text, forced_tier):
                 why = "daily request limit of %s reached" % tiers[ti]["model"]
                 if fallback(why) or next_provider(why):
                     continue
-                run.emit("error", text="Every connected AI has used up its limit for now. Free limits reset at midnight (Gemini: Pacific time, OpenRouter: UTC). Connect another free provider in the AI menu to keep going.")
+                soon = sorted(limits_snapshot(cfg)["blocked"], key=lambda b: b["until"])
+                when = (" The soonest one, %s, is back in about %s." % (soon[0]["provider"], fmt_in(soon[0]["until"] - time.time()))) if soon else ""
+                run.emit("error", text="Every connected AI has used up its limit for now.%s Free limits reset at midnight (Gemini: Pacific time, OpenRouter: UTC). Connect another free provider in the AI menu to keep going." % when)
                 status = "limit"
                 break
             run.who = "%s / %s" % (plabel, tiers[ti]["model"])
@@ -1019,6 +1187,9 @@ def agent_loop(run, user_text, forced_tier):
                     continue
                 if is_limit_error(e):
                     m = tiers[ti]["model"]
+                    if e.status in (429, 503) and not out_of_credit(e):
+                        until = note_limit(pid, plabel, m, e.msg)
+                        run.emit("limit", provider=plabel, model=m, until=until, kind=LIMIT_UNTIL[pid + ":" + m]["kind"])
                     if out_of_credit(e):
                         if next_provider("%s is out of credit" % plabel):
                             continue
@@ -1375,6 +1546,23 @@ def workspace_version(ws):
     return "%d-%d" % (n, newest * 1000)
 
 
+PROBE_HTML = r"""<!doctype html><meta charset=utf-8><body style="margin:0;background:#3a3d44;overflow:hidden"><iframe id=f style="border:0;display:block;background:#fff"></iframe><pre id=rep style="font-size:1px;position:fixed;left:0;bottom:0;opacity:0"></pre>
+<script>
+const P=new URLSearchParams(location.search),W=+P.get('w')||1280,H=+P.get('h')||800,WAIT=Math.min(+P.get('wait')||2500,15000),f=document.getElementById('f');
+f.style.width=W+'px';f.style.height=H+'px';f.src=P.get('u')||'/index.html';
+f.onload=()=>setTimeout(()=>{const R=document.getElementById('rep');try{
+  const d=f.contentDocument,win=f.contentWindow,de=d.documentElement,o={title:d.title,text:(d.body?d.body.innerText:'').replace(/\s+/g,' ').slice(0,700),cw:de.clientWidth,sw:de.scrollWidth,sh:de.scrollHeight,bad:[],small:0};
+  d.querySelectorAll('body *').forEach(e=>{const cs=win.getComputedStyle(e);if(cs.display==='none'||cs.position==='fixed'||cs.visibility==='hidden')return;const r=e.getBoundingClientRect();if(r.width<1||r.height<1)return;
+    const own=[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim().length>1);
+    if(own&&e.offsetParent!==null){let a=e.parentElement;while(a&&a!==d.body&&a!==de){const ox=win.getComputedStyle(a).overflowX;if(/(auto|scroll)/.test(ox))break;
+        if(/(hidden|clip)/.test(ox)){const ar=a.getBoundingClientRect();if(r.right>ar.right+3&&ar.right>0){o.bad.push('text "'+e.textContent.trim().slice(0,28)+'" in <'+e.tagName.toLowerCase()+'> is cut off at the right edge by its container (overflow hidden)')}break}a=a.parentElement}}
+    if(r.right>o.cw+2||r.left<-2){let a=e.parentElement,clip=false;while(a&&a!==d.body&&a!==de){if(/(hidden|auto|scroll|clip)/.test(win.getComputedStyle(a).overflowX)){clip=true;break}a=a.parentElement}
+      if(!clip)o.bad.push(e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+(typeof e.className==='string'&&e.className.trim()?'.'+e.className.trim().split(/\s+/)[0]:'')+' sticks out to x='+Math.round(r.right)+' (screen is '+o.cw+' wide)')}
+    if(e.childNodes.length&&[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim())&&parseFloat(cs.fontSize)<11)o.small++});
+  o.bad=o.bad.slice(0,8);R.textContent=JSON.stringify(o)}catch(e){R.textContent=JSON.stringify({err:String(e)})}},WAIT);
+</script>"""
+
+
 class PreviewHandler(BaseHTTPRequestHandler):
     """Serves the workspace folder on its own port (its own origin, so previewed pages cannot reach the Aqua API)."""
     protocol_version = "HTTP/1.1"
@@ -1398,6 +1586,8 @@ class PreviewHandler(BaseHTTPRequestHandler):
             ws = load_cfg()["workspace"]
             if u.path == "/__aqua/ver":
                 return self._send(200, json.dumps({"v": workspace_version(ws)}), "application/json")
+            if u.path == "/__aqua/probe":
+                return self._send(200, PROBE_HTML, "text/html; charset=utf-8")
             try:
                 p = safe_path(ws, unquote(u.path).lstrip("/") or ".")
             except ToolErr:
@@ -1632,15 +1822,112 @@ def _find_chromium():
     return next((c for c in cands if os.path.exists(c)), None)
 
 
-def _headless(exe, url, extra, timeout=60):
+def _headless(exe, url, extra, timeout=60, size="1200,900", errs=False, budget=25000):
     prof = os.path.join(DATA, "headless-profile")
     os.makedirs(prof, exist_ok=True)
     args = [exe, "--headless=new", "--enable-unsafe-swiftshader", "--hide-scrollbars", "--no-first-run", "--no-default-browser-check",
-            "--user-data-dir=" + prof, "--window-size=1200,900", "--virtual-time-budget=25000"] + extra + [url]
-    kw = {"stdout": subprocess.PIPE, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL, "timeout": timeout}
+            "--user-data-dir=" + prof, "--window-size=" + size, "--virtual-time-budget=%d" % budget] + (["--enable-logging=stderr", "--v=0"] if errs else []) + extra + [url]
+    kw = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE if errs else subprocess.DEVNULL, "stdin": subprocess.DEVNULL, "timeout": timeout}
     if os.name == "nt":
         kw["creationflags"] = 0x00004000 | 0x08000000          # below-normal priority, no console window
-    return subprocess.run(args, **kw).stdout.decode("utf-8", "replace")
+    r = subprocess.run(args, **kw)
+    out = r.stdout.decode("utf-8", "replace")
+    return (out, r.stderr.decode("utf-8", "replace")) if errs else out
+
+
+def tool_look_page(run, ws, a):
+    """The AI looks at a web page it built (the Preview): screenshot + browser console errors + visible text."""
+    import html as _html
+    from urllib.parse import urlparse as _up
+    u = str(a.get("url") or a.get("path") or "index.html").strip()
+    if not re.match(r"^https?://", u, re.I):
+        if not PREVIEW_PORT:
+            raise ToolErr("The preview server is not running.")
+        u = "http://127.0.0.1:%d/%s" % (PREVIEW_PORT, u.replace("\\", "/").lstrip("/"))
+    host = (_up(u).hostname or "").lower()
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        raise ToolErr("look_page only opens pages on this computer (localhost / 127.0.0.1), such as the Preview or a dev server you started.")
+    exe = _find_chromium()
+    if not exe:
+        raise ToolErr("look_page needs Edge, Chrome, Chromium or Brave installed; none was found.")
+    mobile = bool(a.get("mobile"))
+    try:
+        w = int(a.get("width") or (390 if mobile else 1280))
+        h = int(a.get("height") or (844 if mobile else 800))
+    except Exception:
+        w, h = (390, 844) if mobile else (1280, 800)
+    w, h = max(240, min(w, 2400)), max(240, min(h, 3000))
+    wait = max(500, min(int(a.get("wait_ms") or 2500), 15000))
+    outdir = os.path.join(ws, NOTES_DIR, "look")
+    os.makedirs(outdir, exist_ok=True)
+    png = os.path.join(outdir, "page.png")
+    if os.path.exists(png):
+        os.remove(png)
+    try:
+        pu = _up(u)
+        on_preview = bool(PREVIEW_PORT and pu.port == PREVIEW_PORT)
+        if on_preview:
+            from urllib.parse import quote as _q0
+            shot_u = "http://127.0.0.1:%d/__aqua/probe?u=%s&w=%d&h=%d&wait=%d&shot=1" % (PREVIEW_PORT, _q0(pu.path + ("?" + pu.query if pu.query else "")), w, h, wait)
+        else:
+            shot_u = u
+        # a headless window is never narrower than ~500px, so phone sizes are drawn inside a frame of exactly w x h
+        _, err = _headless(exe, shot_u, ["--screenshot=" + png, "--hide-scrollbars"], timeout=60, size="%d,%d" % (max(w, 500) if on_preview else w, h), errs=True, budget=wait + (1500 if on_preview else 0))
+        probe = None
+        if PREVIEW_PORT and pu.port == PREVIEW_PORT:
+            from urllib.parse import quote as _q
+            pdom = _headless(exe, "http://127.0.0.1:%d/__aqua/probe?u=%s&w=%d&h=%d&wait=%d" % (PREVIEW_PORT, _q(pu.path + ("?" + pu.query if pu.query else "")), w, h, wait),
+                             ["--dump-dom"], timeout=60, size="%d,%d" % (w, h), budget=wait + 4000)
+            pm = re.search(r'<pre id="rep"[^>]*>(.*?)</pre>', pdom, re.S)
+            if pm:
+                try:
+                    probe = json.loads(_html.unescape(pm.group(1)))
+                except Exception:
+                    probe = None
+        dom = "" if probe and not probe.get("err") else _headless(exe, u, ["--dump-dom"], timeout=60, size="%d,%d" % (w, h), budget=wait)
+    except subprocess.TimeoutExpired:
+        raise ToolErr("The page did not finish loading in time (an endless loop or a server that does not answer?).")
+    msgs = []
+    for line in err.splitlines():
+        m = re.search(r'CONSOLE[^\]]*\]\s*"(.*)", source: (\S+) \((\d+)\)', line)
+        if m and "rollup" not in m.group(2) and "ProtocolLaunch" not in m.group(1) and "Tracking Prevention" not in m.group(1) and "should not be used in production" not in m.group(1):      # skip the browser's own noise
+            lvl = "ERROR" if re.search(r":ERROR:|Uncaught|TypeError|ReferenceError|SyntaxError|Failed to load|404|net::", line + m.group(1)) else "log"
+            msgs.append((lvl, "%s (%s:%s)" % (m.group(1)[:220], m.group(2).split("/")[-1][:40], m.group(3))))
+    errors = [t for l, t in msgs if l == "ERROR"]
+    logs = [t for l, t in msgs if l != "ERROR"]
+    layout = ""
+    if probe and not probe.get("err"):
+        text, ttl = probe.get("text") or "", probe.get("title") or "(none)"
+        bad = probe.get("bad") or []
+        if probe.get("sw", 0) > probe.get("cw", 0) + 2 or bad:
+            layout = "LAYOUT PROBLEM: the page is wider than the %dpx screen (content reaches %spx)%s" % (
+                probe.get("cw", w), probe.get("sw"), (":\n  - " + "\n  - ".join(bad)) if bad else ".")
+            layout += "\n  Fix with max-width:100%, flex-wrap, smaller fixed widths or media queries, and do not hide it with overflow-x:hidden."
+        if probe.get("small"):
+            layout += ("\n" if layout else "") + "Small text: %d elements use a font size under 11px." % probe["small"]
+    else:
+        body = re.search(r"<body[^>]*>(.*)</body>", dom, re.S | re.I)
+        text = re.sub(r"\s+", " ", _html.unescape(re.sub(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", " ", body.group(1) if body else dom, flags=re.S | re.I))).strip()
+        t_ = re.search(r"<title[^>]*>(.*?)</title>", dom, re.S | re.I)
+        ttl = _html.unescape(t_.group(1)).strip() if t_ else "(none)"
+    out = ["LOOK at %s (%dx%d%s)" % (u, w, h, ", phone size" if mobile else ""),
+           "Title: %s" % ttl,
+           layout or "Layout: nothing sticks out of the screen.",
+           "Console errors (%d): %s" % (len(errors), ("\n  - " + "\n  - ".join(errors[:12])) if errors else "none"),
+           "Console messages: %s" % (("\n  - " + "\n  - ".join(logs[:6])) if logs else "none"),
+           "Visible text (%d chars): %s" % (len(text), text[:700] or "(the page shows no text: it may be blank or broken)")]
+    if os.path.isfile(png):
+        try:
+            with open(png, "rb") as f:
+                run.look_img = base64.b64encode(f.read()).decode()
+                run.look_text = "This is a screenshot of the page from look_page. Judge it honestly: layout, overlaps, cut-off text, wrong colours, empty areas. Fix what looks wrong."
+        except Exception:
+            pass
+        out.append("A screenshot is saved at .aqua/look/page.png." + (" It is attached below if your model can see images." if getattr(run, "look_img", None) else ""))
+    else:
+        out.append("No screenshot could be taken.")
+    out.append("Fix every console error and visual problem, then look again (at most 3 rounds). Check a phone size too with mobile=true.")
+    return "\n".join(out)
 
 
 def tool_look_3d(run, ws, a):
@@ -1680,6 +1967,7 @@ def tool_look_3d(run, ws, a):
         try:
             with open(png, "rb") as f:
                 run.look_img = base64.b64encode(f.read()).decode()
+                run.look_text = None
         except Exception:
             pass
         out += "\nA picture with 4 views is saved at .aqua/look/%s." % os.path.basename(png)
@@ -1888,6 +2176,8 @@ class H(BaseHTTPRequestHandler):
                 if not p:
                     return self._send(404, {"error": "no pending approval"})
                 p["ok"] = bool(b.get("ok"))
+                if "answers" in b:
+                    p["answers"] = b.get("answers") if isinstance(b.get("answers"), list) else None
                 p["ev"].set()
                 return self._send(200, {"ok": True})
             if u.path == "/api/stop":
