@@ -847,6 +847,9 @@ def system_prompt(ws, extra=""):
             "(what you did, what is left, anything the next AI must know), then answer with a brief summary and no tool call. "
             "SEEING: for anything with a screen (web pages, games, UIs) you can really look at it: after you build it, and before and after you fix a visual or runtime bug, "
             "call look_page (screenshot if your model sees images, plus browser console errors and visible text). Fix every console error and visible problem, then look again, at most 3 rounds. "
+            "DEBUGGING: when the user says something is blank, black, broken or 'does not work', do NOT guess. FIRST call look_page and read the console errors: the first error is almost always the cause "
+            "(for example 'X is not defined' means a variable or function was deleted or misspelled; search for it). Fix that exact cause. Never change camera, colours or other unrelated things as a guess, "
+            "and never replace a big block with edit_file without checking that every name defined inside it is still defined (search each one). After a fix, call look_page again to prove it works before you say it is fixed. "
             "ASKING: like a good colleague, when the request is vague or has important open choices (what kind of app, which stack, design style, "
             "main features, who it is for), call ask_user ONCE at the start with 1-4 short questions (2-4 short options each) before you build. "
             "Do not ask about things you can decide yourself, and do not ask when the request is already clear, when the user said to just do it, or when the notes already answer it. "
@@ -1027,6 +1030,10 @@ def exec_tool(run, cfg, name, args):
         out = fn(ws, args)
         if name in WRITE_TOOLS and PREVIEW_PORT and str(args.get("path", "")).lower().endswith((".html", ".htm")):
             run.emit("preview", url="http://127.0.0.1:%d/%s" % (PREVIEW_PORT, str(args["path"]).replace("\\", "/").lstrip("/")), auto=True)
+        if name == "edit_file":
+            out += lost_definitions(ws, args)
+        if name in WRITE_TOOLS:
+            out += auto_page_check(run, ws, str(args.get("path", "")))
         return out, False, None
     except ToolErr as e:
         return str(e), True, None
@@ -1232,6 +1239,14 @@ def agent_loop(run, user_text, forced_tier):
                 last_text = am["content"].strip()
                 run.emit("text", text=am["content"], tier=ti, model=tiers[ti]["model"], name=tiers[ti]["name"], cost=cost, provider=plabel)
             if not calls:
+                # safety net: never finish while the page the AI built still crashes in the browser
+                pe = getattr(run, "page_errors", None)
+                if pe and getattr(run, "gate_count", 0) < 2 and not run.stop:
+                    run.gate_count = getattr(run, "gate_count", 0) + 1
+                    run.emit("status", persist=False, text="Aqua found errors in the page, asking the AI to fix them")
+                    messages.append({"role": "user", "content": "[aqua check] You said you are done, but the page still fails in the browser:\n- " + "\n- ".join(pe[:6]) +
+                                     "\nThis is the real error. Find the cause with search/read_file and fix it (do not change unrelated things), then call look_page to confirm before you finish."})
+                    continue
                 break
 
             step_err = False
@@ -1835,6 +1850,68 @@ def _headless(exe, url, extra, timeout=60, size="1200,900", errs=False, budget=2
     return (out, r.stderr.decode("utf-8", "replace")) if errs else out
 
 
+def _parse_console(err):
+    msgs = []
+    for line in err.splitlines():
+        m = re.search(r'CONSOLE[^\]]*\]\s*"(.*)", source: (\S+) \((\d+)\)', line)
+        if m and "rollup" not in m.group(2) and "ProtocolLaunch" not in m.group(1) and "Tracking Prevention" not in m.group(1) and "should not be used in production" not in m.group(1):
+            lvl = "ERROR" if re.search(r":ERROR:|Uncaught|TypeError|ReferenceError|SyntaxError|Failed to load|404|net::", line + m.group(1)) else "log"
+            msgs.append((lvl, "%s (%s:%s)" % (m.group(1)[:220], m.group(2).split("/")[-1][:40], m.group(3))))
+    return msgs
+
+
+_JS_EXT = (".html", ".htm", ".js", ".mjs", ".jsx", ".css")
+
+
+def lost_definitions(ws, a):
+    """edit_file removed a 'const x = / let x / function x' but x is still used elsewhere: the classic cause of 'it was working, now it is blank'"""
+    old, new, rel = str(a.get("old") or ""), str(a.get("new") or ""), str(a.get("path") or "")
+    if not rel.lower().endswith((".html", ".htm", ".js", ".mjs", ".jsx", ".ts", ".tsx")):
+        return ""
+    try:
+        txt = open(safe_path(ws, rel), encoding="utf-8", errors="replace").read()
+    except Exception:
+        return ""
+    lost = {}
+    for m in re.finditer(r"\b(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)", old):
+        n = m.group(1)
+        if n in lost or re.search(r"\b(?:const|let|var|function|class)\s+%s\b" % re.escape(n), txt):
+            continue                                       # still defined somewhere in the file
+        uses = [i + 1 for i, line in enumerate(txt.splitlines()) if re.search(r"(?<![\w$.])%s\b" % re.escape(n), line)]
+        if uses:
+            lost[n] = uses[:6]
+    if not lost:
+        return ""
+    return ("\n[aqua check] WARNING: this edit deleted the definition of a name that other code still uses, which will crash the page:\n- " +
+            "\n- ".join("%s (used on line %s)" % (n, ", ".join(str(x) for x in u)) for n, u in list(lost.items())[:6]) +
+            "\nPut the definition back (or update the code that uses it) now.")
+
+
+_auto = {"t": 0.0}
+
+
+def auto_page_check(run, ws, rel):
+    """After the AI writes a web file, load the page in a hidden browser and report real errors, so it fixes the real cause instead of guessing."""
+    rel = rel.replace("\\", "/").lstrip("/")
+    if not PREVIEW_PORT or not rel.lower().endswith(_JS_EXT) or rel.startswith(("3d/", ".aqua/", "node_modules/")):
+        return ""
+    page = rel if rel.lower().endswith((".html", ".htm")) else "index.html"
+    if not os.path.isfile(os.path.join(ws, page)):
+        return ""
+    exe = _find_chromium()
+    if not exe:
+        return ""
+    try:
+        _, err = _headless(exe, "http://127.0.0.1:%d/%s" % (PREVIEW_PORT, page), ["--dump-dom"], timeout=40, size="1280,800", errs=True, budget=3500)
+    except Exception:
+        return ""
+    errors = [t for l, t in _parse_console(err) if l == "ERROR"]
+    run.page_errors = errors
+    if not errors:
+        return ""
+    return "\n[aqua check] I opened %s in a browser right after your change and it has %d error(s):\n- %s\nThis is the real cause of what the user sees (often a blank or black page). Fix it first." % (page, len(errors), "\n- ".join(errors[:6]))
+
+
 def tool_look_page(run, ws, a):
     """The AI looks at a web page it built (the Preview): screenshot + browser console errors + visible text."""
     import html as _html
@@ -1894,6 +1971,7 @@ def tool_look_page(run, ws, a):
             lvl = "ERROR" if re.search(r":ERROR:|Uncaught|TypeError|ReferenceError|SyntaxError|Failed to load|404|net::", line + m.group(1)) else "log"
             msgs.append((lvl, "%s (%s:%s)" % (m.group(1)[:220], m.group(2).split("/")[-1][:40], m.group(3))))
     errors = [t for l, t in msgs if l == "ERROR"]
+    run.page_errors = errors
     logs = [t for l, t in msgs if l != "ERROR"]
     layout = ""
     if probe and not probe.get("err"):
