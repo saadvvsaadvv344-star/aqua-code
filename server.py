@@ -44,6 +44,7 @@ DEFAULT_CONFIG = {
     "esc_steps": 8,               # steps on one tier without finishing before escalating
     "sticky_tier": False,         # keep the stronger tier for the next message
     "failover": True,             # when an AI runs out of credit or hits its limit, switch to the next connected AI
+    "pool_models": True,          # when every configured model is limited, also try other models of the same provider
     "level": "balanced",          # working level: low (gentle), balanced, high (full speed)
     "no_key_fallback": True,      # when no API key is saved, use the free anonymous models that still work without one
     "failover_paid": False,       # ...but only to FREE providers unless this is on (so it never spends money by surprise)
@@ -220,7 +221,7 @@ def _apply_config_update(new):
         cfg["known_workspaces"] = kn[-30:]
     if new.get("level") in ("low", "balanced", "high"):
         cfg["level"] = new["level"]
-    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback"):
+    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback", "pool_models"):
         if k in new:
             cfg[k] = bool(new[k])
     for k in NUM_KEYS:
@@ -368,9 +369,16 @@ def note_limit(pid, label, model, msg="", daily=None):
     """remember that this model is limited and when it comes back"""
     now = time.time()
     if daily is None:
-        daily = bool(re.search(r"per.?day|daily|limit:\s*0|free.?models?.*per.?day|exceeded your current quota|quota exceeded", msg or "", re.I)) and retry_seconds(msg) < 3600
-        if retry_seconds(msg) > 3600:
+        m_ = msg or ""
+        rs = retry_seconds(m_)
+        if re.search(r"per.?minute|per.?second|\brpm\b|\btpm\b|tokens per min", m_, re.I):
+            daily = False
+        elif re.search(r"per.?day|daily|limit:\s*0|free.?models?.*per.?day", m_, re.I) or rs > 3600:
             daily = True
+        elif rs > 0:
+            daily = False
+        else:
+            daily = bool(re.search(r"exceeded your current quota|quota exceeded", m_, re.I))
     if daily:
         until = provider_reset_at(pid, now) or next_local_midnight(now)
         kind = "daily"
@@ -1075,7 +1083,7 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
                 run.look_img = None
                 continue
             per_day = e.status == 429 and re.search(r"per.?day|daily|limit:\s*0|free.?models?.*per.?day", e.msg, re.I)
-            if e.status in (429, 500, 502, 503, 504) and attempt < len(delays) and not run.stop and not per_day:
+            if e.status in (429, 500, 502, 503, 504) and attempt < (1 if e.status == 429 else len(delays)) and not run.stop and not per_day:
                 run.emit("status", persist=False, text="%s returned %s, retrying in %ds" % (t["model"], e.status, delays[attempt]))
                 time.sleep(delays[attempt])
                 continue
@@ -1194,6 +1202,23 @@ def out_of_credit(e):
     return e.status == 402 or bool(re.search(r"insufficient (balance|credit|funds)|out of credit|credits? (are )?exhausted", e.msg or "", re.I))
 
 
+_pool_cache = {}
+
+
+def pool_models(pid, tiers):
+    """Other chat models the provider offers with this same key. Each model has its own free quota, so when the configured ones are limited, Aqua just uses these instead of waiting."""
+    c = _pool_cache.get(pid)
+    if not c or time.time() - c[0] > 3600:
+        r = list_models(pid)
+        c = (time.time(), r.get("ids") or [] if r.get("ok") else [])
+        _pool_cache[pid] = c
+    have = {t["model"] for t in tiers}
+    bad = re.compile(r"embed|tts|audio|image|vision|live|transcribe|guard|moderation|rerank|whisper|imagen|veo|lyria|dall|ocr|robotics|computer-use|learnlm|aqa|gemma|safeguard|-exp|exp-|preview-\d|thinking|search|ranker|code-?bison|text-bison", re.I)
+    ids = [i for i in c[1] if i not in have and not bad.search(i)]
+    ids.sort(key=lambda i: (0 if "flash" in i.lower() else 2 if "pro" in i.lower() else 1, len(i)))
+    return ids[:8]
+
+
 def agent_loop(run, user_text, forced_tier):
     sess = run.sess
     cfg = load_cfg()
@@ -1265,6 +1290,16 @@ def agent_loop(run, user_text, forced_tier):
             if (pid, j) not in blocked and quota_left(j):
                 switch_to(j, reason)
                 return True
+        if cfg.get("pool_models", True):                      # every configured model is limited: try the provider's other models with the same key
+            try:
+                for m in pool_models(pid, tiers):
+                    if is_limited(pid + ":" + m):
+                        continue
+                    tiers.append({"name": "Extra", "model": m, "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 0, "rpd": 0, "extra": True})
+                    switch_to(len(tiers) - 1, reason + "; trying " + m)
+                    return True
+            except Exception:
+                pass
         return False
 
     def next_provider(reason):
@@ -1352,6 +1387,8 @@ def agent_loop(run, user_text, forced_tier):
                 call_t0 = time.time()
                 resp = call_llm(run, cfg, pid, tiers, ti, messages)
             except LLMError as e:
+                if tiers[ti].get("extra") and e.status in (400, 404, 415, 422) and fallback("%s cannot be used here" % tiers[ti]["model"]):
+                    continue
                 if e.status == 401 and next_provider("%s rejected the key" % plabel):
                     continue
                 if is_limit_error(e):
