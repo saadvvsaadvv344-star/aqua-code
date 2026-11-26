@@ -210,3 +210,8 @@ Streaming responses, more providers (any OpenAI-compatible endpoint already work
 ## License
 
 MIT. See `LICENSE`.
+
+
+## Paste your keys
+
+Press **Add multi-model API key** (in the Connect window or the AI menu) and paste your keys, one per line or several at once. Aqua finds which service each key belongs to (from the start of the key: `AIza`, `gsk_`, `sk-or-`, `csk-`, `nvapi-`, `hf_`), loads the models it can use, picks a small fast one to start with and a big one to escalate to (free ones first), and tests it. Any other service: write `name: key`, for example `mistral: your-key` or `together: your-key`. Works for all 26 built-in services and for Together, Fireworks, DeepInfra, SambaNova and Hyperbolic. A wrong key never replaces a working one. Prefer to choose the models yourself? Use **Pick models by hand** in the same window: load the key's model list, search it and tick up to six. Every other model the key can use stays as automatic backup.

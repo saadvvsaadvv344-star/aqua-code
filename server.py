@@ -1863,6 +1863,175 @@ def multikey_models(base, key):
     return {"ok": True, "models": out}
 
 
+def _tier_list(picks):
+    n = len(picks)
+    names = ["Lite"] if n == 1 else ["Lite", "Pro"] if n == 2 else ["Lite"] + (["Standard"] if n == 3 else ["Standard %d" % (i + 1) for i in range(n - 2)]) + ["Pro"]
+    return [{"name": names[i], "model": picks[i], "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 0, "rpd": 0} for i in range(n)]
+
+
+_NOT_CHAT = re.compile(r"embed|tts|audio|image|vision|transcribe|guard|moderation|rerank|whisper|imagen|dall|ocr|diffusion|flux", re.I)
+_SMALL = re.compile(r"flash|mini|small|lite|nano|lightning|haiku|\b(7|8|9|20)b\b", re.I)
+_BIG = re.compile(r"pro|large|ultra|opus|max|sonnet|\b(70|120|235|405|550)b\b|r1|v3", re.I)
+
+
+def auto_pick_ids(rows):
+    """Two models from a key's list: a small fast one to start with, a big one to escalate to. Free ones first when the service marks them."""
+    ids = [r if isinstance(r, str) else r["id"] for r in rows]
+    free = {r["id"] for r in rows if isinstance(r, dict) and r.get("free")}
+    tools_no = {r["id"] for r in rows if isinstance(r, dict) and r.get("tools") is False}
+    c = [i for i in ids if not _NOT_CHAT.search(i) and i not in tools_no]
+    if any(i in free for i in c):
+        c = [i for i in c if i in free] or c
+    a = next((i for i in c if _SMALL.search(i)), None)
+    b = next((i for i in c if _BIG.search(i) and i != a), None)
+    out = [x for x in (a, b) if x]
+    for i in c:
+        if len(out) >= 2:
+            break
+        if i not in out:
+            out.append(i)
+    return out
+
+
+# Which service a pasted key belongs to. Keys that have no recognisable prefix can be written as  name: key
+KEY_PREFIXES = [("sk-or-", "openrouter"), ("AIza", "gemini"), ("gsk_", "groq"), ("csk-", "cerebras"), ("nvapi-", "nvidia"),
+                ("hf_", "huggingface"), ("github_pat_", "github"), ("ghp_", "github"), ("fw_", "fireworks")]
+HUB_PRESETS = {"together": ("Together AI", "https://api.together.xyz/v1"), "fireworks": ("Fireworks AI", "https://api.fireworks.ai/inference/v1"),
+               "deepinfra": ("DeepInfra", "https://api.deepinfra.com/v1/openai"), "sambanova": ("SambaNova", "https://api.sambanova.ai/v1"),
+               "hyperbolic": ("Hyperbolic", "https://api.hyperbolic.xyz/v1")}
+
+
+def _nm(s):
+    return re.sub(r"[^a-z0-9]", "", str(s).lower())
+
+
+def resolve_service(name, key, cfg):
+    """-> ("prov", pid) | ("hub", id) | None"""
+    provs = cfg["providers"]
+    if name:
+        n = _nm(name)
+        for pid, v in provs.items():
+            if n in (_nm(pid), _nm(v.get("label", ""))):
+                return ("prov", pid)
+        for hid, (lab, _b) in HUB_PRESETS.items():
+            if n in (hid, _nm(lab)):
+                return ("hub", hid)
+        return None
+    for pre, svc in KEY_PREFIXES:
+        if key.startswith(pre):
+            if svc in provs:
+                return ("prov", svc)
+            if svc in HUB_PRESETS:
+                return ("hub", svc)
+    return None
+
+
+def parse_key_lines(text):
+    """Yields (name_or_None, key). Accepts one key per line, 'name: key', or several keys on a line separated by spaces or commas."""
+    out = []
+    for raw in str(text or "").splitlines()[:60]:
+        line = raw.strip().strip("\"'")
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r"^([A-Za-z][\w .+()-]{1,30}?)\s*[:=]\s*([^\s,;]{12,})$", line)
+        if m:
+            out.append((m.group(1).strip(), m.group(2).strip("\"'")))
+            continue
+        for tok in re.split(r"[\s,;]+", line):
+            tok = tok.strip("\"'")
+            if len(tok) >= 12:
+                out.append((None, tok))
+    return out[:30]
+
+
+def connect_key(kind, ident, key):
+    """Saves one key, picks its models, and tests the first one. Never returns or logs the key."""
+    try:
+        if kind == "hub":
+            label, base = HUB_PRESETS[ident]
+            m = multikey_models(base, key)
+            if not m["ok"]:
+                return {"service": label, "ok": False, "detail": m["error"]}
+            picks = auto_pick_ids(m["models"])
+            if not picks:
+                return {"service": label, "ok": False, "detail": "No chat model found for this key."}
+            pid = multikey_save(label, base, key, picks, all(r["free"] for r in m["models"] if r["id"] in picks))
+        else:
+            pid = ident
+            with _lock:
+                cfg = load_cfg()
+                old_key = cfg["providers"][pid].get("key", "")
+                cfg["providers"][pid]["key"] = key
+                save_cfg(cfg)
+
+            def restore():                       # a wrong key must never replace a working one
+                with _lock:
+                    c3 = load_cfg()
+                    c3["providers"][pid]["key"] = old_key
+                    save_cfg(c3)
+            if pid == "openrouter":
+                try:
+                    openrouter_autoconfig()
+                except Exception:
+                    pass
+            else:
+                s = models_sync(pid)
+                if s.get("ok") is False:
+                    restore()
+                    return {"service": load_cfg()["providers"][pid]["label"], "ok": False, "detail": s.get("error", "Could not list the models.")}
+                tiers = load_cfg()["providers"][pid]["tiers"]
+                if not tiers or not tiers[0].get("model"):
+                    r = list_models(pid)
+                    picks = auto_pick_ids(r.get("ids") or []) if r.get("ok") else []
+                    if not picks:
+                        return {"service": load_cfg()["providers"][pid]["label"], "ok": False, "detail": "The key works but no chat model was found."}
+                    with _lock:
+                        cfg = load_cfg()
+                        cfg["providers"][pid]["tiers"] = _tier_list(picks)
+                        save_cfg(cfg)
+            _pool_cache.pop(pid, None)
+        t = test_connection(pid, 0)
+        label = load_cfg()["providers"][pid]["label"]
+        if t.get("ok"):
+            return {"service": label, "id": pid, "ok": True, "detail": "%d models in the ladder, first one answered in %d ms" % (len(load_cfg()["providers"][pid]["tiers"]), t.get("ms", 0))}
+        err = str(t.get("error", "unknown error"))
+        if kind != "hub" and re.search(r"HTTP 40[13]", err):
+            restore()
+            return {"service": label, "ok": False, "detail": "The service rejected this key (%s). Nothing was changed." % err}
+        return {"service": label, "id": pid, "ok": False, "saved": True, "detail": "Saved, but the first model did not answer: %s" % err}
+    except Exception as e:
+        return {"service": "?", "ok": False, "detail": str(e)[:200]}
+
+
+def bulk_keys(text):
+    results, seen = [], set()
+    pairs = parse_key_lines(text)
+    if not pairs:
+        return {"ok": False, "error": "Paste at least one key."}
+    for name, key in pairs:
+        if key in seen:
+            continue
+        seen.add(key)
+        cfg = load_cfg()
+        svc = resolve_service(name, key, cfg)
+        hint = "%s...%s" % (key[:4], key[-3:]) if len(key) > 10 else "key"
+        if not svc:
+            results.append({"hint": hint, "service": name or "?", "ok": False,
+                            "detail": "Unknown service for this key. Write it as  name: key  (for example  mistral: your-key  or  together: your-key)."})
+            continue
+        r = connect_key(svc[0], svc[1], key)
+        r["hint"] = hint
+        results.append(r)
+    cfg = load_cfg()
+    ok_ids = [r["id"] for r in results if r.get("ok") and r.get("id")]
+    if ok_ids and not has_access(cfg["providers"].get(cfg["provider"], {})):
+        with _lock:
+            c2 = load_cfg()
+            c2["provider"] = ok_ids[0]
+            save_cfg(c2)
+    return {"ok": True, "results": results, "config": masked_cfg(load_cfg())}
+
+
 def multikey_save(label, base, key, models, free=True):
     """Save one key that opens many models: the picked models become the ladder (first = tried first), every other model of the key stays a backup."""
     label = str(label or "").strip()[:24]
@@ -1871,9 +2040,7 @@ def multikey_save(label, base, key, models, free=True):
     picks = list(dict.fromkeys(str(x).strip() for x in (models or []) if str(x).strip()))[:6]
     if not base.startswith("http") or not key or not picks:
         raise ValueError("Give it an endpoint, a key and at least one model.")
-    n = len(picks)
-    names = ["Lite"] if n == 1 else ["Lite", "Pro"] if n == 2 else ["Lite"] + (["Standard"] if n == 3 else ["Standard %d" % (i + 1) for i in range(n - 2)]) + ["Pro"]
-    tiers = [{"name": names[i], "model": picks[i], "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 0, "rpd": 0} for i in range(n)]
+    tiers = _tier_list(picks)
     with _lock:
         cfg = load_cfg()
         pid = next((k for k, v in cfg["providers"].items() if str(v.get("base", "")).rstrip("/").lower() == base.lower()), None)
@@ -2814,6 +2981,8 @@ class H(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, "id": pid, "config": masked_cfg(load_cfg())})
                 except ValueError as e:
                     return self._send(200, {"ok": False, "error": str(e)})
+            if u.path == "/api/keys/bulk":
+                return self._send(200, bulk_keys(b.get("text")))
             if u.path == "/api/multikey/models":
                 return self._send(200, multikey_models(b.get("base"), b.get("key")))
             if u.path == "/api/multikey/save":

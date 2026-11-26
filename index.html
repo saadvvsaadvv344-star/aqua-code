@@ -1102,11 +1102,45 @@ function openWelcome(prefer){
       if(t.ok){w.classList.remove('show');toast('Connected to '+S.cfg.providers[pick].label);S.forced='auto';render();if(!S.sid)showHero()}
       else draw((t.error||'Could not connect.')+' The key was saved; check it or continue anyway.',true,true);
     };
-    const wx=$('#w_x');if(wx)wx.onclick=closeW;const wm=$('#w_multi');if(wm)wm.onclick=openMultiKey;
+    const wx=$('#w_x');if(wx)wx.onclick=closeW;const wm=$('#w_multi');if(wm)wm.onclick=openPasteKeys;
     $('#w_go').onclick=go;const wk=$('#w_key');if(wk)wk.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
     const sk=$('#w_skip');if(sk)sk.onclick=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
     const nk=$('#w_nokey');if(nk)nk.onclick=async()=>{nk.classList.add('busy');const r=await api('/api/nokey/enable',{});nk.classList.remove('busy');if(!r.config){draw(r.error||'No anonymous model is available right now.',true);return}S.cfg=r.config;w.classList.remove('show');toast('Using '+S.cfg.providers[S.cfg.provider].label+' without a key. Slow, and prompts are public.');S.forced='auto';render();if(!S.sid)showHero()};
     if(!msg)setTimeout(()=>{const k=$('#w_key');if(k)k.focus()},50);
+  };
+  w.classList.add('show');draw();
+}
+
+/* ---------- paste your keys: Aqua finds the service and picks the models ---------- */
+function openPasteKeys(){
+  const w=$('#welcome'),box=$('#wbox');
+  const closeW=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
+  if(window._wKey)document.removeEventListener('keydown',window._wKey);
+  window._wKey=e=>{if(e.key==='Escape'&&w.classList.contains('show'))closeW()};document.addEventListener('keydown',window._wKey);
+  w.onclick=e=>{if(e.target===w)closeW()};
+  let text='',results=null,busy=false;
+  const draw=()=>{
+    box.innerHTML=`<div style="padding:26px 30px 4px;text-align:center;position:relative"><button class="btn pill ic" id="pk_x" title="Close" aria-label="Close" style="position:absolute;right:18px;top:18px">${ic('x')}</button><div class="logo" style="width:60px;height:60px;margin:0 auto 12px"><svg class="i"><use href="#i-logo"/></svg></div>
+      <h2 style="font-size:24px;letter-spacing:-.3px">Paste your API keys</h2><p class="mut" style="margin-top:6px">Paste one key per line, or several at once. Aqua finds which service each key is from, loads the models it can use, picks free fast ones first, and tests them. Keys are saved on this PC only.</p></div>
+      <div class="modal-b" style="padding-top:12px">
+        <textarea id="pk_text" rows="6" spellcheck="false" autocomplete="off" placeholder="AIza...your Gemini key&#10;gsk_...your Groq key&#10;sk-or-v1-...your OpenRouter key&#10;mistral: your key here&#10;together: your key here" style="width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--gb2);background:rgba(255,255,255,.55);color:inherit;font:13px Consolas,monospace;resize:vertical;white-space:pre">${esc(text)}</textarea>
+        <div class="guide" style="margin:0"><b>Not recognised?</b><p style="margin-top:4px">Most keys are detected from their start (AIza, gsk_, sk-or-, csk-, nvapi-, hf_). For any other service write the name first, like <span class="mono">mistral: your-key</span>. Works for all 26 services and for Together, Fireworks, DeepInfra, SambaNova and Hyperbolic.</p></div>
+        <div><button class="btn gold" id="pk_go">${ic('check')}Connect keys</button> <button class="btn ghost" id="pk_hand" style="margin-left:8px">Pick models by hand instead</button></div>
+        <div id="pk_res">${results?results.map(r=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-radius:12px;margin-top:6px;background:${r.ok?'rgba(60,180,120,.12)':'rgba(220,80,80,.1)'}"><span style="color:${r.ok?'var(--green)':'var(--red)'};padding-top:2px">${ic(r.ok?'check':'x')}</span><div style="font-size:13px"><b>${esc(r.service)}</b> <span class="mono" style="color:var(--mut)">${esc(r.hint)}</span><br><span style="color:var(--mut)">${esc(r.detail||'')}</span></div></div>`).join(''):''}</div>
+      </div>
+      <div class="modal-f"><button class="btn ghost" id="pk_close">${results?'Done':'Cancel'}</button></div>`;
+    $('#pk_x').onclick=closeW;$('#pk_close').onclick=closeW;$('#pk_hand').onclick=openMultiKey;
+    const ta=$('#pk_text');ta.oninput=e=>{text=e.target.value};
+    $('#pk_go').onclick=async()=>{
+      if(busy)return;text=ta.value;if(!text.trim()){toast('Paste a key first');return}
+      busy=true;const b=$('#pk_go');b.classList.add('busy');$('#pk_res').innerHTML='<div style="color:var(--mut);font-size:13px;margin-top:8px">Connecting and testing each key. This can take a little while...</div>';
+      const r=await api('/api/keys/bulk',{text});busy=false;
+      if(!r.ok){results=[{service:'Error',hint:'',ok:false,detail:r.error||'Could not connect.'}];draw();return}
+      if(r.config)S.cfg=r.config;results=r.results;text='';
+      const n=results.filter(x=>x.ok).length;if(n){S.forced='auto';toast(n+' key'+(n>1?'s':'')+' connected')}
+      draw();render();
+    };
+    if(!results)setTimeout(()=>ta.focus(),50);
   };
   w.classList.add('show');draw();
 }
@@ -1155,11 +1189,11 @@ function openMultiKey(){
         <label class="fld">Endpoint address<input id="mk_base" value="${esc(st.base)}" placeholder="https://example.com/v1" autocomplete="off"></label>
         <label class="fld">Name<input id="mk_name" value="${esc(st.label)}" placeholder="My models" maxlength="24" autocomplete="off"></label>
         <label class="fld">API key<input id="mk_key" type="password" autocomplete="off" value="${esc(st.key)}" placeholder="Paste your key here"></label>
-        <div><button class="btn gold" id="mk_load">${ic('refresh')}Load models</button></div>
+        <div><button class="btn gold" id="mk_load">${ic('refresh')}Load models</button> <button class="btn ghost" id="mk_paste" style="margin-left:8px">Paste keys instead</button></div>
         <div id="mk_msg" style="font-size:12.5px;min-height:18px;color:${bad?'var(--red)':'var(--mut)'}">${esc(msg||'')}</div>
         <div id="mk_models"></div></div>
       <div class="modal-f"><button class="btn ghost" id="mk_cancel">Cancel</button><button class="btn gold" id="mk_save" disabled>${ic('check')}Save and connect</button></div>`;
-    $('#mk_x').onclick=closeW;$('#mk_cancel').onclick=closeW;
+    $('#mk_x').onclick=closeW;$('#mk_cancel').onclick=closeW;$('#mk_paste').onclick=openPasteKeys;
     $('#mk_pre').onchange=e=>{st.pre=+e.target.value;const p=MK_PRESETS[st.pre];st.base=p[1];st.label=p[1]?p[0]:'';$('#mk_base').value=st.base;$('#mk_name').value=st.label;st.rows=[];st.picked=[];drawModels()};
     $('#mk_base').oninput=e=>{st.base=e.target.value.trim()};$('#mk_name').oninput=e=>{st.label=e.target.value};$('#mk_key').oninput=e=>{st.key=e.target.value.trim()};
     const load=async()=>{
@@ -1203,7 +1237,7 @@ function drawAiMenu(){
     const r=await api('/api/config',{provider:k});if(!r.config){toast(r.error||'Could not switch');return}
     S.cfg=r.config;S.forced='auto';S.cur=null;render();if(!S.sid)showHero();toast('Now talking with '+v.label);
   });
-  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openMultiKey()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
+  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openPasteKeys()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
 }
 document.addEventListener('click',e=>{const m=$('#aiMenu');if(m&&!m.hidden&&!e.target.closest('#aiMenu'))m.hidden=true});
 
