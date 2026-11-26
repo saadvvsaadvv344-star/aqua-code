@@ -3068,7 +3068,7 @@ class H(BaseHTTPRequestHandler):
             if u.path.startswith("/assets/"):
                 fp = os.path.join(ROOT, "assets", os.path.basename(u.path))
                 ext = os.path.splitext(fp)[1].lower()
-                ct = {".png": "image/png", ".ico": "image/x-icon", ".svg": "image/svg+xml"}.get(ext)
+                ct = {".png": "image/png", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".js": "text/javascript"}.get(ext)
                 if not ct or not os.path.isfile(fp):
                     return self._send(404, {"error": "not found"})
                 with open(fp, "rb") as f:

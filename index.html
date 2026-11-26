@@ -1576,5 +1576,6 @@ void main(){vec2 uv=gl_FragCoord.xy/R;vec2 p=(gl_FragCoord.xy-.5*R)/R.y;float e=
 const _fxApply=FX.apply;FX.apply=function(){_fxApply();WATER.sync()};
 setTimeout(FX.apply,50);setTimeout(FX.apply,600);addEventListener('load',()=>setTimeout(FX.apply,100));
 </script>
+<script src="/assets/local_rally.js" onerror="this.remove()"></script>
 </body>
 </html>

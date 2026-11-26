@@ -19,3 +19,6 @@ projects/
 # how-it-works presentation: render output stays local (attach the mp4 to a Release)
 video/howitworks/build/
 video/howitworks/*.mp4
+
+# local only: the fast key rally helper (never uploaded)
+assets/local_rally.js
