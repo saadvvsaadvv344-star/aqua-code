@@ -257,7 +257,7 @@ def _apply_config_update(new):
 
 # How long the AI keeps improving its work after it first says "done" (the working level also sets how hard Aqua uses this PC)
 LEVEL_WORK = {"low": 0, "balanced": 30 * 60, "high": 60 * 60}      # seconds
-LEVEL_STEPS = {"low": 0, "balanced": 150, "high": 400}              # step ceiling for long work
+LEVEL_STEPS = {"low": 0, "balanced": 600, "high": 2000}              # step ceiling for long work
 KEEP_FOCI = ["test and review everything: run it, look at it, and fix every bug and visual problem you find",
              "add the missing depth: more detail, features, content and interactions that the request implies",
              "polish: visuals, animation, UX, phone-size layout, edge cases and speed",
@@ -1214,6 +1214,27 @@ def agent_loop(run, user_text, forced_tier):
             return True
         return False
 
+    tr = {"n": 0}
+
+    def wait_for_limits():
+        """Balanced/Max: do not give up while working time is left. Sleep until the soonest short limit is back, then carry on."""
+        left_ = work_budget - (time.time() - t_start)
+        if work_budget <= 0 or left_ < 120 or run.stop:
+            return False
+        soon_ = sorted((b for b in limits_snapshot(cfg)["blocked"] if b["kind"] == "rate"), key=lambda b: b["until"])
+        wait_ = (soon_[0]["until"] - time.time()) if soon_ else 60.0
+        if wait_ > min(900.0, left_ - 60):
+            return False
+        wait_ = max(5.0, wait_ + 2)
+        run.emit("status", persist=False, text="Every connected AI is limited for a moment. Waiting %s, then Aqua keeps working (%s level)" % (fmt_in(wait_), {"balanced": "Balanced", "high": "Max"}.get(lvl, lvl)))
+        for _ in range(int(wait_ * 2)):
+            if run.stop:
+                return False
+            time.sleep(0.5)
+        blocked.clear()
+        dead.clear()
+        return True
+
     try:
         while steps < max_steps_eff and not run.stop:
             if run.force_escalate:
@@ -1229,7 +1250,7 @@ def agent_loop(run, user_text, forced_tier):
             lim = wait_limits(run, cfg, pid, tiers, ti)
             if lim == "daily":
                 why = "daily request limit of %s reached" % tiers[ti]["model"]
-                if fallback(why) or next_provider(why):
+                if fallback(why) or next_provider(why) or wait_for_limits():
                     continue
                 soon = sorted(limits_snapshot(cfg)["blocked"], key=lambda b: b["until"])
                 when = (" The soonest one, %s, is back in about %s." % (soon[0]["provider"], fmt_in(soon[0]["until"] - time.time()))) if soon else ""
@@ -1240,8 +1261,10 @@ def agent_loop(run, user_text, forced_tier):
             if run.who not in acts["ais"]:
                 acts["ais"].append(run.who)
             run.emit("model", tier=ti, name=tiers[ti]["name"], model=tiers[ti]["model"], tiers=len(tiers), provider=plabel)
-            run.emit("status", persist=False, text="%s - %s is working" % (plabel, tiers[ti]["model"]))
+            left_now = work_budget - (time.time() - t_start)
+            run.emit("status", persist=False, text="%s - %s is working%s" % (plabel, tiers[ti]["model"], (" (%s: about %d min of working time left)" % ({"balanced": "Balanced", "high": "Max"}.get(lvl, lvl), int(left_now // 60))) if left_now > 60 else ""))
             try:
+                call_t0 = time.time()
                 resp = call_llm(run, cfg, pid, tiers, ti, messages)
             except LLMError as e:
                 if e.status == 401 and next_provider("%s rejected the key" % plabel):
@@ -1256,9 +1279,17 @@ def agent_loop(run, user_text, forced_tier):
                             continue
                     else:
                         why = ("rate limited on %s" if e.status == 429 else "%s is overloaded" if e.status == 503 else "%s is not available") % m
-                        if fallback(why) or next_provider(why):
+                        if fallback(why) or next_provider(why) or wait_for_limits():
                             continue
                     e.msg += " (no other connected AI could take over. Add another free provider in the AI menu, or wait for the limit to reset.)"
+                if work_budget > 0 and not run.stop and (work_budget - (time.time() - t_start)) > 120 and tr["n"] < 12 and (e.status in (0, 408, 500, 502, 504) or "timed out" in (e.msg or "").lower() or "connection" in (e.msg or "").lower()):
+                    tr["n"] += 1
+                    run.emit("status", persist=False, text="Network or server hiccup (%s). Retrying in 20 s, the working time is not over" % (e.msg or e.status)[:80])
+                    for _ in range(40):
+                        if run.stop:
+                            break
+                        time.sleep(0.5)
+                    continue
                 run.emit("error", text="%s: %s" % (tiers[ti]["model"], friendly(e.msg)))
                 status = "error"
                 break
@@ -1302,18 +1333,27 @@ def agent_loop(run, user_text, forced_tier):
                                      "\nThis is the real error. Find the cause with search/read_file and fix it (do not change unrelated things), then call look_page to confirm before you finish."})
                     continue
                 left = work_budget - (time.time() - t_start)
-                if work_budget > 0 and left > 90 and not run.stop and steps < max_steps_eff - 3:
+                if work_budget > 0 and left > 45 and not run.stop and steps < max_steps_eff - 3:
                     if push["n"] > 0:
                         push["idle"] = push["idle"] + 1 if push["writes"] == push["w_at"] else 0
-                    if push["idle"] < 2:
+                    if True:                                                # forced: keep going until the working time is over or the user presses Stop
+                        if push["idle"] >= 1:
+                            for _ in range(min(60, 10 * push["idle"]) * 2):  # gentle pace so free limits are not burned by instant answers
+                                if run.stop:
+                                    break
+                                time.sleep(0.5)
+                            if run.stop:
+                                break
                         push["n"] += 1
                         push["w_at"] = push["writes"]
                         focus = KEEP_FOCI[(push["n"] - 1) % len(KEEP_FOCI)]
+                        if push["idle"] >= 1:
+                            focus = "you changed NOTHING last round, which is not acceptable. Pick the single biggest missing feature, section, level, animation or polish item and implement it now with real edits (write_file/edit_file), then look at it"
                         run.emit("keepgoing", round=push["n"], minutes_left=int(left // 60), level=lvl, focus=focus)
                         messages.append({"role": "user", "content": "[aqua keep going] The user picked the %s working level: they want the BEST result, not the fastest. About %d minutes of working time are left. "
                                          "Do not stop at good enough. Round %d focus: %s. The original request was: %s\n"
                                          "First look at the real result (look_page, look_3d, run it, run the tests), list 3 concrete weaknesses, then fix them with real edits. "
-                                         "Only if you truly cannot improve anything more, answer with a brief final summary and no tool call." % (
+                                         "Do NOT give a final summary yet: keep making real improvements until the working time is over (a final summary is only for the very last round)." % (
                                              {"balanced": "Balanced", "high": "Max"}.get(lvl, lvl), int(left // 60), push["n"], focus, user_text.strip()[:300])})
                         steps_here = errs = 0
                         continue
