@@ -108,6 +108,10 @@ For a new task, one call of your strongest model first turns your request (typos
 
 **Auto-prompting for every AI.** Short or vague follow-ups are expanded automatically: a complaint ("it does not work", "I see nothing") gets the debugging method added (look at the page, read the console error, fix that exact cause, prove it), and a short change request gets "edit the existing files, keep what works, then verify". Every AI also gets a build method in its instructions: plan, build in layers (a small working core first, then features, then polish), verify after each step, no placeholders. Hard tasks (shaders, 3D, physics, games) start one model tier higher instead of on the smallest model.
 
+## Why free AIs code badly, and what Aqua does about it
+
+Small free models fail in predictable ways: they misread vague requests, write one giant file in one go, invent code from scratch, never run what they wrote, and say done too early. Aqua adds a safety net for each: **understand first** (a strong model writes a clear brief), **recipes** (tested starter projects for shaders/slime/jelly, 3D scenes and 2D games, copied and adapted instead of invented), **build in layers** (small working core, then features), **auto page check** after every edit (real console errors go straight back to the AI), **look_page** (screenshot, console, layout), a **reviewer** (a stronger model checks the finished result against the brief and sends the AI back to fix real problems), and **keep going** at Balanced and Max.
+
 ## It switches models by itself
 
 When a model hits its limit, Aqua does not wait: it moves to your next model, then to your other connected AIs, and then to the provider's other models with the same key (for example every Gemini flash model the key can use; each has its own free limit). It only waits when nothing is left, and it shows a countdown. The per-model fallbacks can be turned off in Settings.

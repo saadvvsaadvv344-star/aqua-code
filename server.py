@@ -44,6 +44,7 @@ DEFAULT_CONFIG = {
     "esc_steps": 8,               # steps on one tier without finishing before escalating
     "sticky_tier": False,         # keep the stronger tier for the next message
     "failover": True,             # when an AI runs out of credit or hits its limit, switch to the next connected AI
+    "review_gate": True,          # a stronger model checks the finished work against the brief
     "understand_first": True,     # a stronger model first turns a messy request into a clear brief
     "pool_models": True,          # when every configured model is limited, also try other models of the same provider
     "level": "balanced",          # working level: low (gentle), balanced, high (full speed)
@@ -222,7 +223,7 @@ def _apply_config_update(new):
         cfg["known_workspaces"] = kn[-30:]
     if new.get("level") in ("low", "balanced", "high"):
         cfg["level"] = new["level"]
-    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback", "pool_models", "understand_first"):
+    for k in ("auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback", "pool_models", "understand_first", "review_gate"):
         if k in new:
             cfg[k] = bool(new[k])
     for k in NUM_KEYS:
@@ -623,6 +624,8 @@ TOOLS = [
      "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "download_3d_model", "description": "Download a .glb/.gltf/.obj/.stl from an allowed site (GitHub, threejs.org...) into models/.",
      "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "name": {"type": "string"}}, "required": ["url"]}}},
+    {"type": "function", "function": {"name": "recipes", "description": "Tested, working starter projects. Call with no name to list them, or with a name to copy one into the workspace (default index.html) and then adapt it. Use this FIRST for games, shaders/slime/jelly, 3D scenes: starting from a working recipe is far better than inventing from scratch.",
+     "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "path": {"type": "string", "description": "where to copy it, default index.html"}, "overwrite": {"type": "boolean"}}, "required": []}}},
     {"type": "function", "function": {"name": "look_page", "description": "LOOK at a web page you built or are fixing (the Preview or a localhost dev server): returns a screenshot (if your model can see images), the browser console errors, and the visible text. Use it after building a page and before and after fixing a bug. mobile=true checks a phone size.",
      "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "workspace path like index.html, or http://localhost:PORT/..."},
                                                       "mobile": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"},
@@ -841,7 +844,7 @@ def tool_run_command(ws, a):
     return "Exit code 0\n" + out
 
 
-TOOL_FUNCS = {"ask_user": lambda ws, a: None, "look_page": lambda ws, a: None, "scaffold_3d": lambda ws, a: None, "show_3d": lambda ws, a: None, "look_3d": lambda ws, a: None, "search_3d_models": lambda ws, a: None, "download_3d_model": lambda ws, a: None, "add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
+TOOL_FUNCS = {"recipes": lambda ws, a: None, "ask_user": lambda ws, a: None, "look_page": lambda ws, a: None, "scaffold_3d": lambda ws, a: None, "show_3d": lambda ws, a: None, "look_3d": lambda ws, a: None, "search_3d_models": lambda ws, a: None, "download_3d_model": lambda ws, a: None, "add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
               "edit_file": tool_edit_file, "search": tool_search, "run_command": tool_run_command}
 
 
@@ -947,6 +950,7 @@ def system_prompt(ws, extra=""):
             "BUILD METHOD (this is how good engineers work, so follow it even if you are a small model): first state your plan in 3-5 lines. Then build in LAYERS: (1) a minimal version that really runs, written in a single write_file of at most ~250 lines; verify it (run it or look_page). "
             "(2) add features one or two at a time with edit_file, verifying after each. (3) polish. NEVER write one giant file in one go, never leave TODOs, placeholders or fake functions, and never claim something works without having run or looked at it. "
             "If the user message is short or vague (for example \"fix it\", \"it does not work\", \"add fur\"), work out what they mean from the files and the project notes instead of guessing or starting over, and keep everything that already works. "
+            "RECIPES: for games, shaders (slime, jelly, liquid, glass), 3D scenes or arcade/2D games, FIRST call recipes: if one fits, copy it and adapt it step by step (they are tested and work) instead of inventing from scratch. "
             "SEPARATION: this folder is one project. If its existing files clearly belong to a DIFFERENT project than what the user now asks for (for example a PC-builder app when they ask for a cat game), "
             "do NOT read, reuse or overwrite them: tell the user to click the + next to Project in the sidebar to start a new empty project, then stop. Never try to open folders outside the workspace; they belong to other projects. "
             "SEEING: for anything with a screen (web pages, games, UIs) you can really look at it: after you build it, and before and after you fix a visual or runtime bug, "
@@ -1160,6 +1164,8 @@ def exec_tool(run, cfg, name, args):
             return tool_scaffold_3d(ws), False, None
         if name == "show_3d":
             return tool_show_3d(run, ws, args), False, None
+        if name == "recipes":
+            return tool_recipes(ws, args), False, None
         if name == "look_3d":
             return tool_look_3d(run, ws, args), False, None
         if name == "look_page":
@@ -1272,6 +1278,52 @@ def make_brief(run, cfg, pid, tiers, top, text):
         except Exception:
             continue
     return None, None
+
+
+REVIEW_SYSTEM = ("You are a strict senior code reviewer. You get a build brief and the files an AI built for it. Check the files against the brief's FEATURES and DONE WHEN. "
+                 "Look for: features that are missing or only faked, code that cannot work (undefined names, wrong APIs, wrong math), controls that do nothing, missing score/restart/error handling, and anything a user would immediately notice is broken or ugly. "
+                 "Answer with exactly OK if it satisfies the brief. Otherwise answer ISSUES: followed by at most 5 numbered, concrete, fixable defects (name the function or area and the fix). No praise and no long text.")
+
+
+def review_work(run, cfg, pid, tiers, top, brief, ws, summary):
+    """One call of the strongest tier reads the finished files against the brief. Returns a list of issues, or [] when it is fine."""
+    prov = cfg["providers"][pid]
+    parts, total = [], 0
+    for it in walk_tree(ws, ws, 2, 60):
+        if it["dir"] or not it["path"].lower().endswith((".html", ".htm", ".js", ".mjs", ".css", ".py", ".json", ".md")) or it["path"].startswith(("3d/", ".aqua/")):
+            continue
+        try:
+            body = open(safe_path(ws, it["path"]), encoding="utf-8", errors="replace").read(14000)
+        except Exception:
+            continue
+        if total + len(body) > 26000:
+            break
+        parts.append("=== %s ===\n%s" % (it["path"], body))
+        total += len(body)
+    if not parts:
+        return []
+    msg = "BRIEF:\n%s\n\nTHE BUILDER SAYS:\n%s\n\nFILES:\n%s" % (brief[:1800], (summary or "")[:600], "\n\n".join(parts))
+    for i in list(range(min(top, len(tiers) - 1), -1, -1))[:3]:
+        t = tiers[i]
+        if not t.get("model") or is_limited(pid + ":" + t["model"]) or not quota_left_for(pid, t):
+            continue
+        try:
+            j = http_json(prov["base"].rstrip("/") + "/chat/completions", auth_key(prov),
+                          {"model": t["model"], "messages": [{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": msg}], "max_tokens": 700}, timeout=120)
+            out = (((j.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+            u = j.get("usage") or {}
+            record_usage(pid, tiers, i, int(u.get("prompt_tokens") or 0), 0, int(u.get("completion_tokens") or 0), bool(prov.get("free")))
+            if not out or re.match(r"^\W*OK\b", out):
+                return []
+            issues = [re.sub(r"^\s*\d+[\.\)]\s*", "", ln).strip() for ln in out.replace("ISSUES:", "").splitlines() if re.match(r"^\s*\d+[\.\)]", ln)]
+            return issues[:5] or ([out[:500]] if len(out) > 20 else [])
+        except LLMError as e:
+            if e.status in (429, 503):
+                note_limit(pid, prov["label"], t["model"], e.msg)
+            continue
+        except Exception:
+            continue
+    return []
 
 
 def agent_loop(run, user_text, forced_tier):
@@ -1518,6 +1570,16 @@ def agent_loop(run, user_text, forced_tier):
                     messages.append({"role": "user", "content": "[aqua check] You said you are done, but the page still fails in the browser:\n- " + "\n- ".join(pe[:6]) +
                                      "\nThis is the real error. Find the cause with search/read_file and fix it (do not change unrelated things), then call look_page to confirm before you finish."})
                     continue
+                if brief and cfg.get("review_gate", True) and getattr(run, "review_n", 0) < 2 and acts["files"] and not run.stop:
+                    run.review_n = getattr(run, "review_n", 0) + 1
+                    run.emit("status", persist=False, text="A stronger model is reviewing the result against the brief")
+                    issues = review_work(run, cfg, pid, tiers, top, brief, cfg["workspace"], last_text)
+                    run.emit("review", ok=not issues, issues=issues)
+                    if issues:
+                        messages.append({"role": "user", "content": "[aqua review] A stronger reviewer checked your result against the brief and found real problems:\n- " + "\n- ".join(issues) +
+                                         "\nFix these exactly with real edits (edit_file), keep everything that works, then verify with look_page."})
+                        steps_here = errs = 0
+                        continue
                 left = work_budget - (time.time() - t_start)
                 if work_budget > 0 and left > 45 and not run.stop and steps < max_steps_eff - 3:
                     if push["n"] > 0:
@@ -2148,6 +2210,96 @@ def _headless(exe, url, extra, timeout=60, size="1200,900", errs=False, budget=2
     return (out, r.stderr.decode("utf-8", "replace")) if errs else out
 
 
+ASSETS_RECIPES = os.path.join(ROOT, "assets", "recipes")
+RECIPES = {
+    "shader-jelly": ("shader-jelly.html", "Full-screen WebGL ray-marched wobbling jelly / slime cube: spring wobble, refraction, subsurface glow, mouse squish, Space shockwave. No libraries. For slime, jelly, liquid, glass, blob and shader games."),
+    "three-scene": ("three-scene.html", "Three.js scene (offline three.js r160): lights, shadows, orbit controls, animated knot, spheres, floor. For any 3D scene, model viewer or 3D game base. Copies the 3d/ folder too."),
+    "canvas-game": ("canvas-game.html", "2D canvas action game: player, auto-fire, enemies, difficulty ramp, score, best score, game over, restart, keyboard + mouse + touch. For any arcade game."),
+}
+
+
+def tool_recipes(ws, a):
+    name = str(a.get("name") or "").strip().lower()
+    if not name:
+        return "Tested starter recipes (copy one, then adapt it to the brief):\n" + "\n".join("- %s: %s" % (k, v[1]) for k, v in RECIPES.items()) + "\nCall recipes with name=<one of these> to copy it."
+    if name not in RECIPES:                                    # forgiving: "slime", "3d", "game" find the right recipe
+        words = [w for w in re.split(r"\W+", name) if len(w) > 2]
+        hits = [k for k, v in RECIPES.items() if any(w in (k + " " + v[1]).lower() for w in words)]
+        if len(hits) >= 1:
+            name = hits[0]
+        else:
+            raise ToolErr("No recipe called %s. Available: %s" % (name, ", ".join(RECIPES)))
+    rel = str(a.get("path") or "index.html").replace("\\", "/").lstrip("/")
+    dst = safe_path(ws, rel)
+    if os.path.exists(dst) and os.path.getsize(dst) > 0 and not a.get("overwrite"):
+        raise ToolErr("%s already exists. Use another path, or overwrite=true if you are sure." % rel)
+    src = os.path.join(ASSETS_RECIPES, RECIPES[name][0])
+    if not os.path.isfile(src):
+        raise ToolErr("The recipe file is missing from this Aqua install.")
+    os.makedirs(os.path.dirname(dst) or ws, exist_ok=True)
+    shutil.copy2(src, dst)
+    extra = ""
+    if name == "three-scene":
+        tool_scaffold_3d(ws)
+        extra = " The 3d/ folder (three.js) was added too."
+    return "Copied recipe %s to %s (it is tested and works as is).%s Now adapt it step by step to the brief with edit_file (change the look, the rules, the content), and run look_page after each change." % (name, rel, extra)
+
+
+def png_flat_share(path):
+    """How much of a screenshot is ONE flat colour (a black or blank canvas shows up as ~90%+). Returns (share, hex) or None."""
+    import struct, zlib
+    try:
+        d = open(path, "rb").read()
+        pos, idat, w, h, ct = 8, b"", 0, 0, 2
+        while pos < len(d):
+            n, tp = struct.unpack(">I4s", d[pos:pos + 8])
+            body = d[pos + 8:pos + 8 + n]
+            pos += 12 + n
+            if tp == b"IHDR":
+                w, h, bd, ct, _, _, il = struct.unpack(">IIBBBBB", body)
+                if bd != 8 or il or ct not in (2, 6):
+                    return None
+            elif tp == b"IDAT":
+                idat += body
+        ch = 3 if ct == 2 else 4
+        raw = zlib.decompress(idat)
+        stride = w * ch
+        prev = bytearray(stride)
+        counts = {}
+        o = 0
+        for y in range(h):
+            f = raw[o]
+            line = bytearray(raw[o + 1:o + 1 + stride])
+            o += 1 + stride
+            if f == 1:
+                for i in range(ch, stride):
+                    line[i] = (line[i] + line[i - ch]) & 255
+            elif f == 2:
+                line = bytearray((x + p) & 255 for x, p in zip(line, prev))
+            elif f == 3:
+                for i in range(stride):
+                    a_ = line[i - ch] if i >= ch else 0
+                    line[i] = (line[i] + ((a_ + prev[i]) >> 1)) & 255
+            elif f == 4:
+                for i in range(stride):
+                    a_ = line[i - ch] if i >= ch else 0
+                    b_ = prev[i]
+                    c_ = prev[i - ch] if i >= ch else 0
+                    p_ = a_ + b_ - c_
+                    pa, pb, pc = abs(p_ - a_), abs(p_ - b_), abs(p_ - c_)
+                    line[i] = (line[i] + (a_ if pa <= pb and pa <= pc else b_ if pb <= pc else c_)) & 255
+            prev = line
+            if y % 3 == 0:
+                for x in range(0, w, 3):
+                    k = (line[x * ch] >> 4, line[x * ch + 1] >> 4, line[x * ch + 2] >> 4)
+                    counts[k] = counts.get(k, 0) + 1
+        tot = sum(counts.values()) or 1
+        k, c = max(counts.items(), key=lambda kv: kv[1])
+        return c / tot, "#%x%x%x" % k
+    except Exception:
+        return None
+
+
 def _parse_console(err):
     msgs = []
     for line in err.splitlines():
@@ -2302,6 +2454,9 @@ def tool_look_page(run, ws, a):
         out.append("A screenshot is saved at .aqua/look/page.png." + (" It is attached below if your model can see images." if getattr(run, "look_img", None) else ""))
     else:
         out.append("No screenshot could be taken.")
+    fs = png_flat_share(png) if os.path.isfile(png) else None
+    if fs and fs[0] > 0.98:
+        out.append("Note: the screenshot is almost all one colour (%s). That is normal for a dark game, but if you expected a visible scene, check the camera, object sizes, the render loop and the console." % fs[1])
     out.append("Fix every console error and visual problem, then look again (at most 3 rounds). Check a phone size too with mobile=true.")
     return "\n".join(out)
 

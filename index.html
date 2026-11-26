@@ -642,7 +642,7 @@ function setStatus(t){clearStatus();const d=el(`<div class="dots"><span></span><
 function addUser(t){clearHero();add(el(`<div class="bub">${esc(t)}</div>`,'msg user'))}
 function chipFor(ev){const n=(S.cur&&S.cur.n)||tiers().length;return `<span class="chip" style="color:${tcol(ev.tier,n)}"><i></i>${esc(ev.name)}</span>`}
 function addAssistant(ev){add(el(`<div class="who">${ev.provider?`<b style="color:var(--tx)">${esc(ev.provider)}</b>`:''}${chipFor(ev)}<span>${esc(ev.model)}</span><span>${fm(ev.cost||0)}</span></div><div class="bub">${md(ev.text)}</div>`,'msg ai'))}
-const TM={list_dir:['folder',a=>'List '+(a.path||'.')],read_file:['file',a=>'Read '+a.path+(a.start_line?' lines '+a.start_line+'-'+(a.end_line||'end'):'')],write_file:['edit',a=>'Write '+a.path],edit_file:['edit',a=>'Edit '+a.path],search:['search',a=>'Search "'+a.pattern+'"'+(a.path?' in '+a.path:'')],run_command:['term',a=>a.command||''],start_server:['browser',a=>'Start server: '+(a.command||'')],add_note:['edit',a=>'Note for the next AI: '+String(a.text||'').slice(0,70)],scaffold_3d:['browser',a=>'Set up the 3D kit'],show_3d:['browser',a=>'Show 3D model '+(a.path||'')],look_3d:['browser',a=>'Look at 3D model '+(a.path||'')],look_page:['browser',a=>'Look at the page '+(a.url||a.path||'index.html')+(a.mobile?' (phone size)':'')],ask_user:['search',a=>'Asking you '+((a.questions||[]).length||1)+' question(s)'],search_3d_models:['search',a=>'Search free 3D models: '+(a.query||'')],download_3d_model:['browser',a=>'Download 3D model '+String(a.url||'').split('/').pop()],request_stronger_model:['bolt',a=>'Asked for a stronger model']};
+const TM={list_dir:['folder',a=>'List '+(a.path||'.')],read_file:['file',a=>'Read '+a.path+(a.start_line?' lines '+a.start_line+'-'+(a.end_line||'end'):'')],write_file:['edit',a=>'Write '+a.path],edit_file:['edit',a=>'Edit '+a.path],search:['search',a=>'Search "'+a.pattern+'"'+(a.path?' in '+a.path:'')],run_command:['term',a=>a.command||''],start_server:['browser',a=>'Start server: '+(a.command||'')],add_note:['edit',a=>'Note for the next AI: '+String(a.text||'').slice(0,70)],scaffold_3d:['browser',a=>'Set up the 3D kit'],show_3d:['browser',a=>'Show 3D model '+(a.path||'')],look_3d:['browser',a=>'Look at 3D model '+(a.path||'')],recipes:['browser',a=>'Starter recipe '+(a.name||'(list)')],look_page:['browser',a=>'Look at the page '+(a.url||a.path||'index.html')+(a.mobile?' (phone size)':'')],ask_user:['search',a=>'Asking you '+((a.questions||[]).length||1)+' question(s)'],search_3d_models:['search',a=>'Search free 3D models: '+(a.query||'')],download_3d_model:['browser',a=>'Download 3D model '+String(a.url||'').split('/').pop()],request_stronger_model:['bolt',a=>'Asked for a stronger model']};
 function toolBody(name,a){
   if(name==='edit_file')return `<div class="diff">${String(a.old||'').split('\n').map(l=>`<div class="d">- ${esc(l)}</div>`).join('')}${String(a.new||'').split('\n').map(l=>`<div class="a">+ ${esc(l)}</div>`).join('')}</div>`;
   if(name==='write_file')return `<div class="code"><div class="code-h"><span>${esc(a.path)}</span><button data-copy>Copy</button></div><pre><code>${esc(String(a.content||'').split('\n').slice(0,60).join('\n'))}</code></pre></div>`;
@@ -707,6 +707,10 @@ function addBrief(ev){
   const d=el(`<div class="arrow"><span class="chip" style="color:var(--teal)"><i></i>What I understood</span></div><div><b>Your request, made clear</b><small style="white-space:pre-wrap;display:block;margin-top:4px">${esc(ev.text)}</small><small class="mut" style="display:block;margin-top:6px">Written by ${esc(ev.model||"a stronger model")}. If this is wrong, just tell me what to change.</small></div>`,"esc");
   add(d);
 }
+function addReview(ev){
+  if(ev.ok){add(el(`<div class="arrow"><span class="chip" style="color:var(--green)"><i></i>Reviewed</span></div><div><b>A stronger model checked the result against your brief</b><small>No problems found.</small></div>`,'esc'));return}
+  add(el(`<div class="arrow"><span class="chip" style="color:var(--amber)"><i></i>Review</span></div><div><b>A stronger model found problems, the AI is fixing them</b><small style="white-space:pre-wrap;display:block;margin-top:4px">${(ev.issues||[]).map((x,i)=>(i+1)+'. '+esc(x)).join('\n')}</small></div>`,'esc'));
+}
 function addKeep(ev){
   add(el(`<div class="arrow"><span class="chip" style="color:var(--teal)"><i></i>${ev.level==='high'?'Max':'Balanced'}</span></div><div><b>Still working: round ${ev.round}</b><small>About ${ev.minutes_left} min of working time left. Now: ${esc(ev.focus)}. Press Stop any time.</small></div>`,'esc'));
 }
@@ -757,6 +761,7 @@ function handle(ev){
     case 'limit':clearStatus();addLimit(ev);break;
     case 'keepgoing':clearStatus();addKeep(ev);break;
     case 'brief':clearStatus();addBrief(ev);break;
+    case 'review':clearStatus();addReview(ev);break;
     case 'escalate':clearStatus();addEscalate(ev);if(S.cur)S.cur.tier=ev.to;renderRight();break;
     case 'usage':S.usage=ev.usage;S.sessCost=ev.session_cost;renderRight();renderHead();break;
     case 'preview':if(ev.t>Date.now()/1000-45&&(!ev.auto||!PV.closedByUser)&&!(ev.auto&&PV.url===ev.url))pvGo(ev.url);break;
@@ -942,7 +947,7 @@ function collect(){
   if(g('f_base')){p.base=g('f_base').value;p.free=g('f_free').checked}
   if(g('tiers')){p.tiers=[...m.querySelectorAll('.trow')].map(r=>{const v=n=>r.querySelector('[data-k="'+n+'"]').value;return{name:v('name'),model:v('model'),in:+v('in')||0,cache:+v('cache')||0,out:+v('out')||0,rpm:+v('rpm')||0,rpd:+v('rpd')||0}})}
   if(g('f_ws')){draft.workspace=g('f_ws').value;draft.approval=g('f_appr').value;draft.level=g('f_lvl').value;draft.daily_budget=+g('f_day').value||0;draft.total_budget=+g('f_tot').value||0;
-    draft.auto_escalate=g('f_auto').checked;draft.sticky_tier=g('f_sticky').checked;draft.failover=g('f_fo').checked;draft.pool_models=g('f_pool').checked;draft.understand_first=g('f_und').checked;draft.failover_paid=g('f_fop').checked;draft.no_key_fallback=g('f_nk').checked;draft.start_tier=+g('f_start').value||0;draft.max_tier=+g('f_max').value;draft.esc_errors=+g('f_errs').value||2;draft.esc_steps=+g('f_steps').value||8;draft.max_steps=+g('f_ms').value||40}
+    draft.auto_escalate=g('f_auto').checked;draft.sticky_tier=g('f_sticky').checked;draft.failover=g('f_fo').checked;draft.pool_models=g('f_pool').checked;draft.understand_first=g('f_und').checked;draft.review_gate=g('f_rev').checked;draft.failover_paid=g('f_fop').checked;draft.no_key_fallback=g('f_nk').checked;draft.start_tier=+g('f_start').value||0;draft.max_tier=+g('f_max').value;draft.esc_errors=+g('f_errs').value||2;draft.esc_steps=+g('f_steps').value||8;draft.max_steps=+g('f_ms').value||40}
 }
 /* keys are only ever sent by the key manager (never as a side effect of saving other settings) */
 function noKeys(o){const c=JSON.parse(JSON.stringify(o));Object.values(c.providers||{}).forEach(p=>{delete p.key;delete p.has_key});return c}
@@ -976,6 +981,7 @@ function drawSettings(){
    <label class="sw"><input id="f_sticky" type="checkbox" ${draft.sticky_tier?'checked':''}><i></i>Stay on the stronger model for the next message (otherwise reset to cheap)</label>
    <label class="sw"><input id="f_fo" type="checkbox" ${draft.failover!==false?'checked':''}><i></i>When an AI runs out of credit or hits its limit, switch to the next connected AI</label>
    <label class="sw"><input id="f_und" type="checkbox" ${draft.understand_first!==false?'checked':''}><i></i>Understand first: before building, a stronger model turns my request (typos and all) into a clear brief, so the cheap model does not guess</label>
+   <label class="sw"><input id="f_rev" type="checkbox" ${draft.review_gate!==false?'checked':''}><i></i>Review: when the AI says it is done, a stronger model checks the result against the brief and sends the AI back to fix real problems</label>
    <label class="sw"><input id="f_pool" type="checkbox" ${draft.pool_models!==false?'checked':''}><i></i>When every model I set is limited, also try the provider's other models with the same key (each has its own free limit) instead of waiting</label>
    <label class="sw"><input id="f_fop" type="checkbox" ${draft.failover_paid?'checked':''}><i></i>Also allow switching to paid providers (can spend money; off = free ones only)</label>
    <label class="sw"><input id="f_nk" type="checkbox" ${draft.no_key_fallback!==false?'checked':''}><i></i>With no API key saved, use the free anonymous model (LLM7). It is slow and your prompts are public.</label>

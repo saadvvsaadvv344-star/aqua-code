@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jelly Cube</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#070a14;font-family:system-ui,sans-serif;color:#dfe8ff}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#hud{position:fixed;left:16px;top:14px;right:16px;display:flex;justify-content:space-between;gap:12px;pointer-events:none}
+.card{background:rgba(20,28,50,.55);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:10px 16px;backdrop-filter:blur(10px)}
+#hint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);opacity:.8;font-size:13px}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud"><div class="card"><b>JELLY CUBE</b><br><small>drag to squish</small></div><div class="card">Squishes: <b id="score">0</b></div></div>
+<div id="hint" class="card">Click or drag on the jelly. Press Space for a shockwave.</div>
+<script>
+// TESTED STARTER: full-screen ray-marched jelly cube (WebGL1, no libraries, works offline). Change colours/shape in the shader, game rules in the JS below.
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl', {antialias: false, preserveDrawingBuffer: true});
+if (!gl) { document.body.insertAdjacentHTML('beforeend', '<p style="padding:40px">WebGL is not available in this browser.</p>'); throw new Error('no webgl'); }
+const VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+const FS = `precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform float uAmp; uniform vec3 uPoke; uniform float uYaw;
+float sdBox(vec3 p, vec3 b, float r){ vec3 q = abs(p) - b + r; return length(max(q,0.)) + min(max(q.x,max(q.y,q.z)),0.) - r; }
+float map(vec3 p){
+  float w = uAmp * sin(p.y*6. + uTime*9.) * sin(p.x*5. - uTime*7.) * 0.06;     // wobble waves
+  float d = sdBox(p, vec3(0.62), 0.16) + w;
+  float dent = uPoke.z * exp(-8.*length(p.xy - uPoke.xy)) * 0.22;                 // finger dent
+  return d + dent;
+}
+vec3 nrm(vec3 p){ vec2 e = vec2(.002,0.); return normalize(vec3(map(p+e.xyy)-map(p-e.xyy), map(p+e.yxy)-map(p-e.yxy), map(p+e.yyx)-map(p-e.yyx))); }
+vec3 bg(vec3 d){ float t = d.y*.5+.5; return mix(vec3(.02,.03,.08), vec3(.10,.18,.38), t) + vec3(.35,.15,.45)*pow(max(d.z,0.),6.)*.4; }
+void main(){
+  vec2 uv = (gl_FragCoord.xy - .5*uRes) / uRes.y;
+  float c = cos(uYaw), s = sin(uYaw);
+  vec3 ro = vec3(3.7*s, 1.1, 3.7*c);
+  vec3 fw = normalize(-ro), rt = normalize(cross(fw, vec3(0.,1.,0.))), up = cross(rt, fw);
+  vec3 rd = normalize(fw*1.6 + rt*uv.x + up*uv.y);
+  // rotate the world instead of the camera so the poke stays in screen space
+  float t = 0.; bool hit = false; vec3 p;
+  for (int i = 0; i < 90; i++){ p = ro + rd*t; float d = map(vec3(c*p.x - s*p.z, p.y, s*p.x + c*p.z)); if (d < .001){ hit = true; break; } t += d; if (t > 8.) break; }
+  vec3 col = bg(rd);
+  if (hit){
+    vec3 q = vec3(c*p.x - s*p.z, p.y, s*p.x + c*p.z);
+    vec3 n = nrm(q); n = vec3(c*n.x + s*n.z, n.y, -s*n.x + c*n.z);
+    float fr = pow(1. - max(dot(n, -rd), 0.), 3.);
+    vec3 refr = refract(rd, n, .75);
+    vec3 inner = bg(refr) * vec3(.55,1.0,.8);
+    // fake subsurface: thicker = darker and greener
+    float th = 0.; vec3 pp = q; vec3 rr = normalize(vec3(c*refr.x - s*refr.z, refr.y, s*refr.x + c*refr.z));
+    for (int i = 0; i < 8; i++){ pp += rr*.12; th += max(-map(pp), 0.); }
+    vec3 jelly = mix(vec3(.25,1.0,.65), vec3(.0,.35,.25), clamp(th*1.4, 0., 1.));
+    vec3 L = normalize(vec3(-.5,.8,.6));
+    float spec = pow(max(dot(reflect(-L, n), -rd), 0.), 90.);
+    col = mix(inner, jelly, .6) + fr*bg(reflect(rd,n))*.9 + vec3(1.)*spec*1.2 + jelly*max(dot(n,L),0.)*.25;
+  }
+  col += vec3(.0,.2,.12) * smoothstep(1.2, 0., length(uv)) * .25;           // soft glow
+  gl_FragColor = vec4(pow(col, vec3(.9)), 1.);
+}`;
+function sh(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+gl.useProgram(pr);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(pr, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = n => gl.getUniformLocation(pr, n);
+const uRes = U('uRes'), uTime = U('uTime'), uAmp = U('uAmp'), uPoke = U('uPoke'), uYaw = U('uYaw');
+
+let amp = 0, ampV = 0, poke = {x: 0, y: 0, z: 0, target: 0}, down = false, score = 0, yaw = 0.5;
+function resize(){ const d = Math.min(devicePixelRatio || 1, 1.5); cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); gl.viewport(0, 0, cv.width, cv.height); }
+addEventListener('resize', resize); resize();
+function setPoke(e){ const r = cv.getBoundingClientRect(); const u = ((e.clientX - r.left) / r.width - .5) * (r.width / r.height), v = -((e.clientY - r.top) / r.height - .5);
+  poke.x = u * 1.9; poke.y = v * 1.9; }                       // roughly the cube's surface scale
+function shock(power){ ampV += power; score++; document.getElementById('score').textContent = score; }
+cv.addEventListener('pointerdown', e => { down = true; cv.setPointerCapture(e.pointerId); setPoke(e); poke.target = 1; shock(2.5); });
+cv.addEventListener('pointermove', e => { if (down) { setPoke(e); } });
+cv.addEventListener('pointerup', () => { down = false; poke.target = 0; shock(3.5); });
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); shock(6); } });
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min((now - last) / 1000, .05); last = now;
+  ampV += (-amp * 90 - ampV * 6) * dt; amp += ampV * dt;     // spring: this is the wobble
+  poke.z += (poke.target - poke.z) * Math.min(1, dt * 14);
+  yaw += dt * .25;
+  gl.uniform2f(uRes, cv.width, cv.height); gl.uniform1f(uTime, now / 1000); gl.uniform1f(uAmp, Math.max(-3, Math.min(3, amp)));
+  gl.uniform3f(uPoke, poke.x, poke.y, poke.z); gl.uniform1f(uYaw, yaw);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+setTimeout(() => shock(4), 400);                                  // a first wobble so it never looks frozen
+</script></body></html>
