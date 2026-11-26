@@ -6,6 +6,9 @@
 
 Aqua Code is a local, single-file-server coding agent with a liquid-glass interface. It reads and edits files in a workspace folder, runs commands, and shows you exactly what it costs. Made by Saad.
 
+- **Watch the 5-minute explainer** (every feature, plus the free API key tutorial): [video/aqua-code-explainer-github.mp4](video/aqua-code-explainer-github.mp4)
+- **Where to get free API keys** (every link in one place): [FREE_API_KEYS.md](FREE_API_KEYS.md)
+- Every AI can also build 3D models (see "3D modeling" below).
 - No dependencies: Python 3.9+ standard library only.
 - Runs on `127.0.0.1`. Your key never leaves your machine except to call the provider you chose.
 
@@ -102,7 +105,10 @@ Ask for anything 3D ("make a low-poly castle", "download a duck model") and ever
 - `show_3d` opens the model in the Preview pane (orbit, wireframe, auto-rotate, save picture).
 - `search_3d_models` + `download_3d_model` fetch free ready-made models (Khronos glTF samples, three.js examples). Check each model's licence before you use it.
 
-The AI cannot see the render, so it checks sizes and fixes what it can; open the Preview and tell it what to change.
+- `look_3d` lets the AI look at its own build: it renders 4 views (3/4, front, side, top) in a headless Edge/Chrome and returns a text report (size, floating or sunk parts, ASCII silhouettes). Models that can read images also get the picture, so even text-only models can check their work. The pictures are saved in `.aqua/look/`.
+- Big or many builds are fast and need no Blender: the builder makes 1000+ parts in under a second, `aqua_parts.py` has ready trees, houses, towers, cars, furniture, bridges and a windmill, and `Scene.grid` / `Scene.ring` / `Scene.use` repeat them.
+
+The AI does a few look-and-fix rounds by itself; open the Preview and tell it what else to change.
 
 ## How it saves credit
 

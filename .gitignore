@@ -6,6 +6,7 @@ __pycache__/
 video/build/
 # the videos are big (GitHub rejects files over 100 MB): attach them to a Release instead
 video/*.mp4
+!video/aqua-code-explainer-github.mp4
 video/own_voice/
 *.pyc
 .env

@@ -56,9 +56,72 @@ async function load(url){
     else throw new Error('Unsupported file type .'+ext);
     const tris=prepare(obj);scene.add(obj);current=obj;fit(obj);$('#msg').style.display='none';$('#stat').textContent=Math.round(tris).toLocaleString()+' triangles';
     window.__loaded={url,triangles:Math.round(tris)};
+    if(typeof afterLoad==='function')afterLoad();
   }catch(e){$('#msg').innerHTML='Could not load <b>'+url+'</b><br>'+e.message;window.__loaded={error:String(e)}}
 }
 const params=new URLSearchParams(location.search);
+const SHEET=params.get('sheet')==='1',REPORT=params.get('report')==='1';
+if(SHEET||REPORT){document.getElementById('ui').style.display='none';controls.autoRotate=false;controls.enabled=false;document.getElementById('msg').style.display='none'}
+// ---- "look at it" modes used by the AI through the look_3d tool (headless browser): contact sheet picture + text report
+function analyse(obj){
+  const all=new THREE.Box3().setFromObject(obj),S=all.getSize(new THREE.Vector3());const parts=[];
+  obj.traverse(o=>{if(o.isMesh){const b=new THREE.Box3().setFromObject(o);parts.push({name:o.name||(o.parent&&o.parent.name)||'part',b,o})}});
+  const foot=S.x*S.z,H=S.y,R=Math.max(S.x,S.y,S.z),eps=Math.max(R*0.012,0.02);
+  const isGround=p=>{const s=p.b.getSize(new THREE.Vector3());return s.x*s.z>0.6*foot&&s.y<0.08*H+eps&&parts.length>1};
+  const floating=[],sunk=[],tiny=[];
+  parts.forEach((p,i)=>{
+    const s=p.b.getSize(new THREE.Vector3());
+    if(Math.max(s.x,s.y,s.z)<R*0.004)tiny.push(p.name);
+    if(isGround(p))return;
+    if(p.b.min.y<-0.1*Math.max(s.y,eps*3)-eps)sunk.push(p.name+' (below ground by '+(-p.b.min.y).toFixed(2)+')');
+    if(p.b.min.y<=eps)return;
+    const e=p.b.clone().expandByScalar(eps);let touch=false;
+    for(let j=0;j<parts.length;j++){if(j!==i&&e.intersectsBox(parts[j].b)){touch=true;break}}
+    if(!touch)floating.push(p.name+' at y='+p.b.min.y.toFixed(2));
+  });
+  const f=n=>n.toFixed(2);
+  const lines=['Size (x wide, y high, z deep): '+f(S.x)+' x '+f(S.y)+' x '+f(S.z)+' units','Parts (meshes): '+parts.length,'Triangles: '+Math.round(window.__loaded?window.__loaded.triangles:0)];
+  lines.push(floating.length?'FLOATING parts that touch nothing ('+floating.length+'): '+floating.slice(0,15).join('; '):'Floating parts: none');
+  lines.push(sunk.length?'Parts sunk into the ground: '+sunk.slice(0,10).join('; '):'Sunk parts: none');
+  if(tiny.length)lines.push('Almost invisible parts: '+tiny.slice(0,10).join('; '));
+  return {lines,size:S,all,ground:parts.filter(isGround).map(p=>p.o)};
+}
+function asciiViews(obj,info){
+  const W=100,H=50,rt=new THREE.WebGLRenderTarget(W,H),buf=new Uint8Array(W*H*4);
+  const c=info.all.getCenter(new THREE.Vector3()),S=info.size;const ramp=' .:-=+*#%@';
+  const hid=[ground,grid].concat(info.ground);hid.forEach(o=>o.visible=false);const out=[];
+  const defs=[['FRONT (looking along -z, x to the right)',new THREE.Vector3(0,0,1),S.x,S.y],['SIDE (looking along -x, z to the left)',new THREE.Vector3(1,0,0),S.z,S.y],['TOP (looking down, x right, z toward you)',new THREE.Vector3(0,1,0),S.x,S.z]];
+  const oc=renderer.getClearColor(new THREE.Color()),oa=renderer.getClearAlpha();renderer.setClearColor(0x000000,0);
+  for(const [name,dir,a,b] of defs){
+    const hw=Math.max(a,2*b)/2*1.08,hh=hw/2,cam=new THREE.OrthographicCamera(-hw,hw,hh,-hh,0.01,1e4);
+    cam.position.copy(c).addScaledVector(dir,Math.max(S.x,S.y,S.z)*3+5);cam.up.set(0,dir.y?0:1,dir.y?-1:0);cam.lookAt(c);
+    renderer.setRenderTarget(rt);renderer.clear();renderer.render(scene,cam);renderer.readRenderTargetPixels(rt,0,0,W,H,buf);renderer.setRenderTarget(null);
+    const rows=[];
+    for(let y=0;y<H;y+=2){let s='';for(let x=0;x<W;x++){let v=0,n=0;for(let k=0;k<2;k++){const i=((H-1-(y+k))*W+x)*4;if(buf[i+3]>20){v+=(buf[i]*.3+buf[i+1]*.59+buf[i+2]*.11)/255;n++}}
+        s+=n===0?' ':ramp[Math.max(1,Math.min(9,Math.round((v/n)*8)+1))]}rows.push(s.replace(/\s+$/,''))}
+    while(rows.length&&!rows[rows.length-1])rows.pop();while(rows.length&&!rows[0])rows.shift();
+    out.push(name+':\n'+rows.join('\n'));
+  }
+  renderer.setClearColor(oc,oa);hid.forEach(o=>o.visible=true);rt.dispose();return out.join('\n\n');
+}
+function doReport(){
+  const info=analyse(current);let txt=info.lines.join('\n')+'\n\n'+asciiViews(current,info);
+  const pre=document.createElement('pre');pre.id='rep';pre.textContent=txt;pre.style.cssText='position:fixed;left:0;top:0;opacity:0;font-size:1px';document.body.appendChild(pre);window.__report=txt;
+}
+function doSheet(){
+  const info=analyse(current),S=info.size,c=info.all.getCenter(new THREE.Vector3());
+  const w=innerWidth,h=innerHeight,cw=w/2,ch=h/2,R=S.length()/2,d=R/Math.sin(THREE.MathUtils.degToRad(30/2))*0.78;grid.visible=false;
+  const defs=[['3/4 view',[1,.75,1.25]],['front',[0,.15,1]],['side (from the right)',[1,.15,0]],['top',[0,1,.001]]];
+  renderer.setScissorTest(true);renderer.setClearColor(0x1a1d24,1);
+  const cams=[];
+  defs.forEach(([name,v],i)=>{
+    const x=(i%2)*cw,y=(i<2?ch:0),cam=new THREE.PerspectiveCamera(30,cw/ch,d/100,d*20),dir=new THREE.Vector3(...v).normalize();
+    cam.position.copy(c).addScaledVector(dir,d);cam.lookAt(c);cams.push([cam,x,y]);
+    const l=document.createElement('div');l.textContent=name;l.style.cssText='position:fixed;left:'+(x+8)+'px;top:'+((i<2?0:ch)+6)+'px;color:#c8ccd4;font:12px sans-serif;background:rgba(0,0,0,.45);padding:2px 8px;border-radius:9px';document.body.appendChild(l);
+  });
+  let frames=0;renderer.setAnimationLoop(()=>{cams.forEach(([cam,x,y])=>{renderer.setViewport(x,y,cw,ch);renderer.setScissor(x,y,cw,ch);renderer.render(scene,cam)});if(++frames>=3)window.__sheetDone=true});
+}
+function afterLoad(){if(!current)return;if(REPORT)doReport();else if(SHEET)doSheet()}
 (async()=>{
   let list=[];try{list=await (await fetch('../models/models.json',{cache:'no-store'})).json()}catch(e){}
   const sel=$('#sel');list.forEach(m=>{const o=document.createElement('option');o.value='../models/'+m.file;o.textContent=m.file;sel.appendChild(o)});

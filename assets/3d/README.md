@@ -28,6 +28,18 @@ s.save("models/thing.glb")                # path is relative to where you run py
                                            # .obj (+.mtl) and .stl work too; the viewer lists everything in models/
 ```
 
+Fast big scenes (no Blender, no installs; 1000+ parts build in under a second):
+
+```python
+from aqua_parts import tree, pine, rock, house, tower, fence, lamp_post, car, table, chair, bench, bridge, windmill
+for (x, y, z) in Scene.grid(4, 3, 14, 14):  house(s, pos=(x, 0, z))      # grid of houses
+for (x, y, z, ang) in Scene.ring(12, 30):   pine(s, pos=(x, 0, z))       # ring of trees
+t = Scene("tower"); tower(t); s.use(t, pos=(20, 0, 0), scale=1.5)        # build once, reuse
+s.check()                                                                # text self-check: floating or sunk parts
+```
+
+Look at your work: the AI tool `look_3d` renders 4 views and a text report; you can also open `3d/viewer.html?m=../models/x.glb&sheet=1` yourself.
+
 Every shape also takes `rot=(rx, ry, rz)` degrees, `scale=`, `metal=0..1`, `rough=0..1`, `name=`.
 
 ## Make it look good

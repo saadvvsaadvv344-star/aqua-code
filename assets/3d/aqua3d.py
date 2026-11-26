@@ -378,6 +378,64 @@ class Scene:
         n = _smooth_normals(v, t)
         return self._add(v, t, n, color, metal, rough, name, pos, rot, scale, smooth)
 
+    # -- reuse, patterns, self check ---------------------------------------------------
+    def use(self, other, pos=(0, 0, 0), rot=(0, 0, 0), scale=1):
+        """place a copy of another finished Scene (a tower, a car...) here; build it once, use it many times"""
+        for p in other.prims:
+            self._add(p["v"], p["t"], p["n"], p["color"], p["metal"], p["rough"], p["name"], pos, rot, scale, True)
+        return self
+
+    @staticmethod
+    def ring(count, radius, y=0.0, start=0.0):
+        """points on a circle: for (x, y, z, angle_deg) in Scene.ring(8, 5): ... (angle faces outward, use as rot=(0, angle, 0))"""
+        out = []
+        for i in range(count):
+            a = start + 360.0 * i / count
+            r = math.radians(a)
+            out.append((radius * math.sin(r), y, radius * math.cos(r), a))
+        return out
+
+    @staticmethod
+    def grid(nx, nz, dx, dz, y=0.0, centered=True):
+        """points on a grid: for (x, y, z) in Scene.grid(10, 10, 4, 4): ..."""
+        ox = -(nx - 1) * dx / 2.0 if centered else 0.0
+        oz = -(nz - 1) * dz / 2.0 if centered else 0.0
+        return [(ox + i * dx, y, oz + j * dz) for i in range(nx) for j in range(nz)]
+
+    def check(self, tol=0.03):
+        """fast text self-check without any viewer: floating parts, parts below ground. Returns a list of problems and prints them."""
+        boxes = []
+        for p in self.prims:
+            xs = [v[0] for v in p["v"]]
+            ys = [v[1] for v in p["v"]]
+            zs = [v[2] for v in p["v"]]
+            boxes.append((min(xs), min(ys), min(zs), max(xs), max(ys), max(zs), p["name"]))
+        if not boxes:
+            return []
+        W = max(b[3] for b in boxes) - min(b[0] for b in boxes)
+        D = max(b[5] for b in boxes) - min(b[2] for b in boxes)
+        R = max(W, D, max(b[4] for b in boxes) - min(b[1] for b in boxes)) or 1.0
+        eps = max(R * 0.012, tol)
+        problems = []
+        for i, b in enumerate(boxes):
+            if (b[3] - b[0]) * (b[5] - b[2]) > 0.6 * W * D and (b[4] - b[1]) < 0.1 * R:
+                continue                                        # the ground
+            if b[1] < -eps * 3:
+                problems.append("%s is %.2f below the ground" % (b[6], -b[1]))
+            if b[1] <= eps:
+                continue
+            touch = False
+            for j, c in enumerate(boxes):
+                if j != i and b[0] - eps <= c[3] and c[0] - eps <= b[3] and b[1] - eps <= c[4] and c[1] - eps <= b[4] and b[2] - eps <= c[5] and c[2] - eps <= b[5]:
+                    touch = True
+                    break
+            if not touch:
+                problems.append("%s floats at y=%.2f (touches nothing)" % (b[6], b[1]))
+        print("check: " + ("no problems found" if not problems else "%d problems" % len(problems)))
+        for t in problems[:20]:
+            print("  - " + t)
+        return problems
+
     # -- info and export ----------------------------------------------------------
     def stats(self):
         mn = [1e18] * 3

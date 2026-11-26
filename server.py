@@ -3,6 +3,7 @@ cheap-to-strong model escalation.  Pure standard library, runs on 127.0.0.1 only
 
     python server.py            -> http://127.0.0.1:8765
 """
+import base64
 import collections
 import copy
 import datetime
@@ -447,6 +448,8 @@ TOOLS = [
      "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "show_3d", "description": "Open a .glb/.gltf/.obj/.stl file from the workspace in the 3D viewer in the user's Preview pane.",
      "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "e.g. models/house.glb"}}, "required": ["path"]}}},
+    {"type": "function", "function": {"name": "look_3d", "description": "LOOK at a 3D model you built: renders 4 views (3/4, front, side, top) and returns a text report (size, floating or sunk parts, ASCII front/side/top views). If your model can read images you also get the picture. Use it after every build and fix what looks wrong.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "e.g. models/castle.glb"}}, "required": ["path"]}}},
     {"type": "function", "function": {"name": "search_3d_models", "description": "Search free ready-made 3D models (Khronos glTF samples and three.js examples). Returns download URLs.",
      "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "download_3d_model", "description": "Download a .glb/.gltf/.obj/.stl from an allowed site (GitHub, threejs.org...) into models/.",
@@ -632,7 +635,7 @@ def tool_run_command(ws, a):
     return "Exit code 0\n" + out
 
 
-TOOL_FUNCS = {"scaffold_3d": lambda ws, a: None, "show_3d": lambda ws, a: None, "search_3d_models": lambda ws, a: None, "download_3d_model": lambda ws, a: None, "add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
+TOOL_FUNCS = {"scaffold_3d": lambda ws, a: None, "show_3d": lambda ws, a: None, "look_3d": lambda ws, a: None, "search_3d_models": lambda ws, a: None, "download_3d_model": lambda ws, a: None, "add_note": lambda ws, a: None, "start_server": lambda ws, a: None, "list_dir": tool_list_dir, "read_file": tool_read_file, "write_file": tool_write_file,
               "edit_file": tool_edit_file, "search": tool_search, "run_command": tool_run_command}
 
 
@@ -795,11 +798,30 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
     payload = {"model": t["model"], "messages": [{"role": "system", "content": system_prompt(cfg["workspace"], THREED_PROMPT if wants_3d(messages, cfg["workspace"]) else "")}] +
                clean_messages(messages, t["model"]), "tools": TOOLS}
     url = prov["base"].rstrip("/") + "/chat/completions"
+    img, nov = getattr(run, "look_img", None), getattr(run, "no_vision", None)
+    if nov is None:
+        nov = run.no_vision = set()
+    if img and (pid + ":" + t["model"]) not in nov:
+        payload["messages"].append({"role": "user", "content": [
+            {"type": "text", "text": "[aqua] This is the picture of your 3D model from look_3d (3/4, front, side, top). Judge it honestly and fix what looks wrong."},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + img}}]})
+        sent_img = True
+    else:
+        sent_img = False
     delays = [3, 8, 20]
     for attempt in range(len(delays) + 1):
         try:
-            return http_json(url, auth_key(prov), payload)
+            res = http_json(url, auth_key(prov), payload)
+            if sent_img:
+                run.look_img = None
+            return res
         except LLMError as e:
+            if sent_img and e.status in (400, 404, 415, 422):
+                nov.add(pid + ":" + t["model"])                # this model cannot read images: continue with the text report only
+                payload["messages"].pop()
+                sent_img = False
+                run.look_img = None
+                continue
             per_day = e.status == 429 and re.search(r"per.?day|daily|limit:\s*0|free.?models?.*per.?day", e.msg, re.I)
             if e.status in (429, 500, 502, 503, 504) and attempt < len(delays) and not run.stop and not per_day:
                 run.emit("status", persist=False, text="%s returned %s, retrying in %ds" % (t["model"], e.status, delays[attempt]))
@@ -838,6 +860,8 @@ def exec_tool(run, cfg, name, args):
             return tool_scaffold_3d(ws), False, None
         if name == "show_3d":
             return tool_show_3d(run, ws, args), False, None
+        if name == "look_3d":
+            return tool_look_3d(run, ws, args), False, None
         if name == "search_3d_models":
             return tool_search_3d(args), False, None
         if name == "download_3d_model":
@@ -1530,7 +1554,8 @@ THREED_PROMPT = (
     "(3) write a Python script that does `import sys; sys.path.insert(0, '3d'); from aqua3d import Scene`, builds the model from MANY well-proportioned parts "
     "(box, sphere, cylinder, cone, torus, extrude, lathe, groups) with a small colour palette, and saves models/<name>.glb (also .obj/.stl if asked); run it with run_command from the workspace root. "
     "PATHS: run_command runs in the workspace root, so a script in the root saves to 'models/x.glb' (NOT '../models'); only a script inside 3d/ run from there uses '../models/x.glb'. "
-    "(4) call show_3d on the file so the user sees it in the Preview pane; check s.report() sizes, make sure nothing floats or sinks into the ground, and fix problems. "
+    "(4) LOOK at your work: call s.check() in the script, then look_3d on the file (4 rendered views plus a text report with floating parts and ASCII silhouettes; vision models also get the picture). Fix every problem and look again, up to 3 rounds, then call show_3d so the user sees it. "
+    "SPEED: never use Blender or install anything; aqua3d is enough and builds 1000+ parts in under a second. For scenes import ready parts: `from aqua_parts import tree, pine, rock, house, tower, fence, lamp_post, car, table, chair, bench, bridge, windmill` and use loops with Scene.grid(nx, nz, dx, dz) / Scene.ring(n, radius); build a part once as its own Scene and reuse it with s.use(other, pos=...). Several models: write one script that saves them all. "
     "(5) for complex organic or realistic things (animals, people, cars, furniture sets) do NOT model them from scratch: call search_3d_models, then download_3d_model, and tell the user the licence to check. "
     "(6) for interactive 3D web pages (games, product viewers, scenes) write HTML that imports three.js from the local copy "
     "(<script type=\"importmap\">{\"imports\":{\"three\":\"./3d/vendor/three.module.min.js\",\"three/addons/\":\"./3d/vendor/addons/\"}}</script>) and show it in the Preview. "
@@ -1587,6 +1612,81 @@ def tool_show_3d(run, ws, a):
     url = "http://127.0.0.1:%d/3d/viewer.html?m=../%s" % (PREVIEW_PORT, rel)
     run.emit("preview", url=url, cmd="3D viewer", auto=False)
     return "Opened %s in the Preview pane (orbit with the mouse, wireframe and auto-rotate buttons)." % rel
+
+
+def _find_chromium():
+    cands = []
+    if os.name == "nt":
+        for env in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"):
+            base = os.environ.get(env)
+            if base:
+                cands += [os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe"),
+                          os.path.join(base, "Google", "Chrome", "Application", "chrome.exe")]
+    else:
+        for n in ("microsoft-edge", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser"):
+            p = shutil.which(n)
+            if p:
+                cands.append(p)
+        cands += ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser", "/Applications/Chromium.app/Contents/MacOS/Chromium"]
+    return next((c for c in cands if os.path.exists(c)), None)
+
+
+def _headless(exe, url, extra, timeout=60):
+    prof = os.path.join(DATA, "headless-profile")
+    os.makedirs(prof, exist_ok=True)
+    args = [exe, "--headless=new", "--enable-unsafe-swiftshader", "--hide-scrollbars", "--no-first-run", "--no-default-browser-check",
+            "--user-data-dir=" + prof, "--window-size=1200,900", "--virtual-time-budget=25000"] + extra + [url]
+    kw = {"stdout": subprocess.PIPE, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL, "timeout": timeout}
+    if os.name == "nt":
+        kw["creationflags"] = 0x00004000 | 0x08000000          # below-normal priority, no console window
+    return subprocess.run(args, **kw).stdout.decode("utf-8", "replace")
+
+
+def tool_look_3d(run, ws, a):
+    import html as _html
+    rel = str(a.get("path") or "").replace("\\", "/").lstrip("/")
+    p = safe_path(ws, rel)
+    if not os.path.isfile(p) or not rel.lower().endswith(MODEL_EXT):
+        raise ToolErr("No 3D file at %s (expected .glb, .gltf, .obj or .stl). Run your script first and check the save path." % rel)
+    vw = os.path.join(ws, "3d", "viewer.html")
+    kit = os.path.join(ASSETS_3D, "viewer.html")
+    if not os.path.isfile(vw):
+        tool_scaffold_3d(ws)
+    elif os.path.isfile(kit) and "sheet" not in open(vw, encoding="utf-8", errors="replace").read():
+        shutil.copy2(kit, vw)                                  # old kit: upgrade the viewer so it can render the contact sheet
+    if not PREVIEW_PORT:
+        raise ToolErr("The preview server is not running.")
+    exe = _find_chromium()
+    if not exe:
+        raise ToolErr("look_3d needs Edge, Chrome, Chromium or Brave installed; none was found. Use the size and part checks in s.report() instead.")
+    base = "http://127.0.0.1:%d/3d/viewer.html?m=../%s" % (PREVIEW_PORT, rel)
+    outdir = os.path.join(ws, NOTES_DIR, "look")
+    os.makedirs(outdir, exist_ok=True)
+    png = os.path.join(outdir, os.path.splitext(os.path.basename(rel))[0] + ".png")
+    if os.path.exists(png):
+        os.remove(png)
+    try:
+        dom = _headless(exe, base + "&report=1", ["--dump-dom"])
+        _headless(exe, base + "&sheet=1", ["--screenshot=" + png])
+    except subprocess.TimeoutExpired:
+        raise ToolErr("The headless render timed out. Try a simpler model or look at it with show_3d.")
+    m = re.search(r'<pre id="rep"[^>]*>(.*?)</pre>', dom, re.S)
+    report = _html.unescape(m.group(1)).strip() if m else ""
+    if not report:
+        raise ToolErr("Could not load %s in the renderer (is the file valid? was it saved to the right folder?)." % rel)
+    out = "LOOK at %s\n%s\n" % (rel, report)
+    if os.path.isfile(png):
+        try:
+            with open(png, "rb") as f:
+                run.look_img = base64.b64encode(f.read()).decode()
+        except Exception:
+            pass
+        out += "\nA picture with 4 views is saved at .aqua/look/%s." % os.path.basename(png)
+        out += " It is attached below if your model can see images." if getattr(run, "look_img", None) else ""
+    out += ("\nHow to read this: the ASCII views are a rough silhouette (darker characters = brighter surface). Check proportions, that every part is where it should be, "
+            "that nothing floats or sinks, and that the shape is recognisable. Fix problems in your script and look again (at most 3 rounds).")
+    return out
 
 
 def _khronos():
