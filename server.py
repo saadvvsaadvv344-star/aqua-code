@@ -538,7 +538,7 @@ def clean_messages(messages, model):
     return out
 
 
-def compact_for_context(msgs, limit=230000, keep_last=14):
+def compact_for_context(msgs, limit=90000, keep_last=12):
     """Long (up to 1 hour) runs would overflow the model's memory: when the chat gets big, shrink OLD tool outputs and old file dumps (the files themselves stay on disk)."""
     total = sum(len(json.dumps(m, ensure_ascii=False)) for m in msgs)
     if total <= limit:
@@ -576,6 +576,11 @@ def compact_for_context(msgs, limit=230000, keep_last=14):
         elif c.get("role") == "user" and isinstance(c.get("content"), str) and len(c["content"]) > 2500:
             c["content"] = c["content"][:2500] + " [...]"
         out.append(c)
+    # still too big (a very long run): drop the oldest steps completely, at a clean boundary (a user message), and point to the notes and the files
+    if sum(len(json.dumps(m, ensure_ascii=False)) for m in out) > limit * 1.6:
+        j = max((i for i in range(2, max(2, len(out) - keep_last)) if out[i].get("role") == "user"), default=0)
+        if j > 1:
+            out = [out[0], {"role": "user", "content": "[aqua] To save memory, your older steps were removed from this chat. The project notes (in your instructions) and the files on disk hold everything done so far: use list_dir/read_file to look at the real state, then continue."}] + out[j:]
     return out
 
 
@@ -1301,11 +1306,16 @@ def agent_loop(run, user_text, forced_tier):
         if wait_ > min(900.0, left_ - 60):
             return False
         wait_ = max(5.0, wait_ + 2)
-        run.emit("status", persist=False, text="Every connected AI is limited for a moment. Waiting %s, then Aqua keeps working (%s level)" % (fmt_in(wait_), {"balanced": "Balanced", "high": "Max"}.get(lvl, lvl)))
-        for _ in range(int(wait_ * 2)):
+        who_ = ", ".join(sorted({"%s %s" % (b["provider"], b["model"]) for b in limits_snapshot(cfg)["blocked"]}))[:120] or plabel
+        end_ = time.time() + wait_
+        while time.time() < end_:
             if run.stop:
                 return False
-            time.sleep(0.5)
+            run.emit("status", persist=False, text="Free per-minute limit reached (%s). Back in %d s, then Aqua keeps working. Add a second free key (Groq, OpenRouter...) to avoid waiting." % (who_, max(0, int(end_ - time.time()))))
+            for _ in range(10):
+                if run.stop or time.time() >= end_:
+                    break
+                time.sleep(1.0)
         blocked.clear()
         dead.clear()
         return True
