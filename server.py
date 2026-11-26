@@ -2029,6 +2029,8 @@ def parse_key_lines(text):
     return out[:30]
 
 
+# some services (Gemini) answer a wrong key with HTTP 400 and words, not 401
+KEY_BAD_RX = re.compile(r"api key not valid|valid api key|invalid[ _-]?api[ _-]?key|incorrect api key|invalid.{0,12}(key|token)|unauthori[sz]ed|authentication (error|failed)|invalid credentials|key.{0,20}(expired|revoked|disabled)", re.I)
 GUESS_MODELS = ["gpt-oss-20b", "gpt-oss-120b", "llama-3.3-70b-instruct", "llama-3.1-8b-instruct", "llama3.1-8b", "mistral-small-latest",
                 "qwen3-32b", "gemma-3-27b-it", "deepseek-chat", "glm-4.7-flash", "openai/gpt-oss-20b", "meta-llama/Llama-3.3-70B-Instruct"]
 
@@ -2135,7 +2137,7 @@ def connect_key(kind, ident, key):
         # the first model may simply not exist for this account: try other models of the same key before giving up
         tried = {load_cfg()["providers"][pid]["tiers"][0].get("model")}
         for _ in range(7):
-            if t.get("ok") or not re.search(r"HTTP (400|404|422)", str(t.get("error", ""))):
+            if t.get("ok") or not re.search(r"HTTP (400|404|422)", str(t.get("error", ""))) or KEY_BAD_RX.search(str(t.get("error", ""))):
                 break
             r = list_models(pid)
             alts = [i for i in auto_pick_ids(r.get("ids") or []) if i not in tried] if r.get("ok") else []
@@ -2153,7 +2155,7 @@ def connect_key(kind, ident, key):
         if t.get("ok"):
             return {"service": label, "id": pid, "ok": True, "detail": "%d model%s in the ladder, first one answered in %d ms" % (n, "" if n == 1 else "s", t.get("ms", 0))}
         err = str(t.get("error", "unknown error"))
-        if kind != "hub" and re.search(r"HTTP 40[13]", err):
+        if kind != "hub" and (re.search(r"HTTP 40[13]", err) or KEY_BAD_RX.search(err)):
             return rejected(err)
         if re.search(r"HTTP 429", err):
             return {"service": label, "id": pid, "ok": True, "detail": "The key works. The service is rate limiting right now, so Aqua will wait or switch automatically."}
