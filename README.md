@@ -2,7 +2,7 @@
 
 # Aqua Code
 
-<p align="center"><b><a href="video/aqua-code-explainer-github.mp4">Watch the 5-minute video</a></b> (every feature and the free API key tutorial)</p>
+<p align="center"><b><a href="https://youtu.be/VPRA-yaupJc">Watch the 5-minute video on YouTube</a></b> (every feature and the free API key tutorial)</p>
 
 **Your own coding agent. Bring your DeepSeek or Gemini key, start cheap, escalate only when needed.**
 

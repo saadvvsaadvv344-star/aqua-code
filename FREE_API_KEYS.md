@@ -37,4 +37,4 @@ Limits are per account or per key. Using several different providers is the norm
 | Python 3.9+ (the only requirement) | https://www.python.org/downloads/ |
 | Edge, Chrome, Brave or Chromium (window + 3D look) | already on most PCs |
 | Aqua Code download | https://github.com/saadvvsaadvv344-star/aqua-code/releases/latest |
-| Explainer video (every feature + free key tutorial) | `video/aqua-code-explainer.mp4` in this repo |
+| Explainer video (every feature + free key tutorial) | https://youtu.be/VPRA-yaupJc |
