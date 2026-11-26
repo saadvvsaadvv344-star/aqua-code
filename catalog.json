@@ -32,7 +32,7 @@
     },
     "zai": {
       "label": "Z AI (GLM)",
-      "base": "https://api.z.ai/api/paas/v4",
+      "base": "https://open.bigmodel.cn/api/paas/v4",
       "group": "Free tiers",
       "tiers": [
         {
@@ -118,13 +118,11 @@
       "tiers": [
         {
           "name": "Lite",
-          "model": "aion-3.0-mini",
-          "rpm": 15
+          "model": "aion-labs/aion-3.0-mini"
         },
         {
           "name": "Pro",
-          "model": "aion-3.0",
-          "rpm": 15
+          "model": "aion-labs/aion-3.0"
         }
       ],
       "info": {
@@ -174,24 +172,24 @@
       "tiers": [
         {
           "name": "Lite",
-          "model": "DeepSeek-V4.1-Flash"
+          "model": "deepseek-ai/DeepSeek-V4.1-Flash"
         },
         {
           "name": "Pro",
-          "model": "gpt-oss-120b"
+          "model": "openai/gpt-oss-120b"
         }
       ],
       "info": {
         "tag": "Free weekly",
         "c": "var(--green)",
         "sub": "Weekly allowance, resets Mondays.",
-        "url": "https://runcrate.ai",
+        "url": "https://www.runcrate.ai/dashboard/api-keys",
         "steps": [
-          "Sign up with a GitHub account (at least 30 days old, so no card is needed).",
-          "Create an API key.",
-          "Paste it below."
+          "Sign in with GITHUB, not Google (the free allowance with no card is for GitHub sign-ins only, and the GitHub account must be at least 30 days old).",
+          "Open the API keys page and create a key.",
+          "Paste it in Paste keys, or in the rally."
         ],
-        "note": "Signing up with Google may ask for a card."
+        "note": "A Google sign-up needs a card on file, and without credit the key is refused. One free allowance per GitHub account, per week, resets Mondays."
       }
     },
     "cloudflare": {
@@ -297,11 +295,11 @@
       "tiers": [
         {
           "name": "Lite",
-          "model": "DeepSeek-V4-Flash"
+          "model": "deepseek-ai/DeepSeek-V4-Flash-0731"
         },
         {
           "name": "Pro",
-          "model": "MiniMax-M2.7"
+          "model": "MiniMaxAI/MiniMax-M2.7"
         }
       ],
       "info": {

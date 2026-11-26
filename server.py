@@ -1987,7 +1987,9 @@ def resolve_service(name, key, cfg):
     return None
 
 
+ALT_BASES = {"zai": ["https://api.z.ai/api/paas/v4"], "siliconflow": ["https://api.siliconflow.com/v1"]}
 KEY_HINTS = {
+    "runcrate": "Runcrate's free allowance works only if you signed up with GitHub (an account at least 30 days old). A Google sign-up needs a card, so the key is refused for lack of credit.",
     "cloudflare": "Cloudflare needs two things: a token with the Workers AI permission and your Account ID. Write the line as  cloudflare: ACCOUNTID:TOKEN  (the Account ID is on the Cloudflare dashboard home page).",
     "github": "Create a personal access token and allow the Models permission.",
     "huggingface": "Create a token that has the permission to make calls to Inference Providers.",
@@ -2218,6 +2220,21 @@ def connect_key(kind, ident, key):
                 cfg["providers"][pid]["tiers"][0]["model"] = alts[0]
                 save_cfg(cfg)
             t = test_connection(pid, 0)
+        if not t.get("ok") and kind != "hub" and pid in ALT_BASES and (re.search(r"HTTP 40[134]", str(t.get("error", ""))) or KEY_BAD_RX.search(str(t.get("error", "")))):
+            for alt in ALT_BASES[pid]:                       # the same service has a second address (for example the international one)
+                with _lock:
+                    cfg = load_cfg()
+                    cfg["providers"][pid]["base"] = alt
+                    save_cfg(cfg)
+                t2 = test_connection(pid, 0)
+                if t2.get("ok"):
+                    t = t2
+                    break
+            else:
+                with _lock:
+                    cfg = load_cfg()
+                    cfg["providers"][pid]["base"] = new_base
+                    save_cfg(cfg)
         n = len(load_cfg()["providers"][pid]["tiers"])
         if t.get("ok"):
             return {"service": label, "id": pid, "ok": True, "detail": "%d model%s in the ladder, first one answered in %d ms" % (n, "" if n == 1 else "s", t.get("ms", 0))}
