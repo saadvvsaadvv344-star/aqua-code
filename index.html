@@ -1079,7 +1079,7 @@ function openWelcome(prefer){
       <div class="guide"><b>How to get your ${esc(S.cfg.providers[pick].label)} key</b><ol>${inf.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><button class="btn ghost" id="w_open">${ic('arrow')}Open the key page</button><p>${esc(inf.note||'')}</p></div>
       ${S.cfg.providers[pick].nokey?`<div class="guide"><b>No key needed</b><p style="margin-top:6px">This service works without an account. Your prompts go to it anonymously, so do not send secrets.</p></div>`:`<label class="fld">${esc(S.cfg.providers[pick].label)} API key<input id="w_key" type="password" autocomplete="off" placeholder="Paste your key here"></label>`}
       <div id="w_msg" style="font-size:12.5px;min-height:18px;color:${bad?'var(--red)':'var(--mut)'}">${esc(msg||'')}</div></div>
-      <div class="modal-f">${showSkip?'<button class="btn ghost" id="w_skip">Continue anyway</button>':''}${S.cfg.no_key_fallback!==false&&Object.values(S.cfg.providers).some(p=>p.nokey)?'<button class="btn ghost" id="w_nokey">Try without a key</button>':''}<button class="btn gold" id="w_go">${ic('check')}${S.cfg.providers[pick].nokey?'Enable':'Connect'}</button></div>`;
+      <div class="modal-f"><button class="btn ghost" id="w_multi" style="margin-right:auto">${ic('plus')}Add multi-model API key</button>${showSkip?'<button class="btn ghost" id="w_skip">Continue anyway</button>':''}${S.cfg.no_key_fallback!==false&&Object.values(S.cfg.providers).some(p=>p.nokey)?'<button class="btn ghost" id="w_nokey">Try without a key</button>':''}<button class="btn gold" id="w_go">${ic('check')}${S.cfg.providers[pick].nokey?'Enable':'Connect'}</button></div>`;
     box.querySelectorAll('.wp').forEach(b=>b.onclick=()=>{pick=b.dataset.p;draw()});
     const wo=$('#w_open');if(inf.url)wo.onclick=()=>window.open(inf.url,'_blank','noopener');else wo.style.display='none';
     const go=async()=>{
@@ -1102,11 +1102,89 @@ function openWelcome(prefer){
       if(t.ok){w.classList.remove('show');toast('Connected to '+S.cfg.providers[pick].label);S.forced='auto';render();if(!S.sid)showHero()}
       else draw((t.error||'Could not connect.')+' The key was saved; check it or continue anyway.',true,true);
     };
-    const wx=$('#w_x');if(wx)wx.onclick=closeW;
+    const wx=$('#w_x');if(wx)wx.onclick=closeW;const wm=$('#w_multi');if(wm)wm.onclick=openMultiKey;
     $('#w_go').onclick=go;const wk=$('#w_key');if(wk)wk.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
     const sk=$('#w_skip');if(sk)sk.onclick=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
     const nk=$('#w_nokey');if(nk)nk.onclick=async()=>{nk.classList.add('busy');const r=await api('/api/nokey/enable',{});nk.classList.remove('busy');if(!r.config){draw(r.error||'No anonymous model is available right now.',true);return}S.cfg=r.config;w.classList.remove('show');toast('Using '+S.cfg.providers[S.cfg.provider].label+' without a key. Slow, and prompts are public.');S.forced='auto';render();if(!S.sid)showHero()};
     if(!msg)setTimeout(()=>{const k=$('#w_key');if(k)k.focus()},50);
+  };
+  w.classList.add('show');draw();
+}
+
+/* ---------- one key, many models ---------- */
+const MK_PRESETS=[['OpenRouter','https://openrouter.ai/api/v1'],['Together AI','https://api.together.xyz/v1'],['Fireworks AI','https://api.fireworks.ai/inference/v1'],['DeepInfra','https://api.deepinfra.com/v1/openai'],['Hugging Face','https://router.huggingface.co/v1'],['SambaNova','https://api.sambanova.ai/v1'],['Hyperbolic','https://api.hyperbolic.xyz/v1'],['Requesty','https://router.requesty.ai/v1'],['Other (type the address)','']];
+function openMultiKey(){
+  const w=$('#welcome'),box=$('#wbox');
+  const st={pre:0,base:MK_PRESETS[0][1],label:MK_PRESETS[0][0],key:'',rows:[],picked:[],q:'',freeOnly:false,free:null};
+  const closeW=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
+  if(window._wKey)document.removeEventListener('keydown',window._wKey);
+  window._wKey=e=>{if(e.key==='Escape'&&w.classList.contains('show'))closeW()};document.addEventListener('keydown',window._wKey);
+  w.onclick=e=>{if(e.target===w)closeW()};
+  const BAD=/embed|tts|audio|image|vision|transcribe|guard|moderation|rerank|whisper|imagen|dall|ocr/i;
+  const freeOf=id=>{const r=st.rows.find(x=>x.id===id);return !!(r&&r.free)};
+  const autoPick=()=>{
+    let c=st.rows.filter(r=>!BAD.test(r.id)&&r.tools!==false);if(st.freeOnly)c=c.filter(r=>r.free);
+    const small=/flash|mini|small|lite|nano|lightning|haiku|\b(7|8|9|20)b\b/i,big=/pro|large|ultra|opus|max|sonnet|\b(70|120|235|405|550)b\b|r1|v3/i;
+    const a=c.find(r=>small.test(r.id)),b=c.find(r=>big.test(r.id)&&(!a||r.id!==a.id));
+    const out=[a,b].filter(Boolean).map(r=>r.id);for(const r of c){if(out.length>=2)break;if(!out.includes(r.id))out.push(r.id)}
+    return out;
+  };
+  const tierName=(i,n)=>n===1?'Lite':i===0?'Lite':i===n-1?'Pro':(n===3?'Standard':'Standard '+i);
+  function drawModels(){
+    const el=$('#mk_models');if(!el)return;
+    if(!st.rows.length){el.innerHTML='';return}
+    const q=st.q.trim().toLowerCase();let rs=st.rows.filter(r=>(!st.freeOnly||r.free)&&(!q||r.id.toLowerCase().includes(q)));rs=[...rs.filter(r=>st.picked.includes(r.id)),...rs.filter(r=>!st.picked.includes(r.id))];const total=rs.length;rs=rs.slice(0,150);
+    const anyFree=st.rows.some(r=>r.free);
+    const allFree=st.picked.length>0&&st.picked.every(freeOf);const freeVal=st.free===null?allFree:st.free;
+    el.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input id="mk_q" placeholder="Search ${st.rows.length} models" value="${esc(st.q)}" style="flex:1;min-width:180px;padding:9px 14px;border-radius:12px;border:1px solid var(--gb2);background:rgba(255,255,255,.55);color:inherit;font:inherit">${anyFree?`<label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="mk_fo" ${st.freeOnly?'checked':''}>Free only</label>`:''}<button class="btn ghost" id="mk_auto">Pick for me</button></div>
+      <div style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--gb2);border-radius:12px">${rs.map(r=>`<label style="display:flex;gap:10px;align-items:center;padding:7px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--gb2)"><input type="checkbox" data-id="${esc(r.id)}" ${st.picked.includes(r.id)?'checked':''}><span class="mono" style="flex:1;word-break:break-all">${esc(r.id)}</span>${r.free?'<span class="chip" style="color:var(--green)"><i></i>free</span>':''}${r.tools===true?'<span class="chip" style="color:var(--mut)"><i></i>tools</span>':''}</label>`).join('')||'<div style="padding:14px;color:var(--mut);font-size:13px">No model matches.</div>'}${total>rs.length?`<div style="padding:10px 12px;color:var(--mut);font-size:12px">Showing ${rs.length} of ${total}. Type in the search box to narrow it down.</div>`:''}</div>
+      <div class="guide" style="margin-top:10px"><b>Your picks (${st.picked.length} of 6)</b>${st.picked.length?`<ol>${st.picked.map((id,i)=>`<li><span class="mono">${esc(id)}</span> <span style="color:var(--mut)">(${tierName(i,st.picked.length)}${i===0?', tried first':''})</span></li>`).join('')}</ol>`:'<p>Tick the models you want, cheapest first. Aqua starts with the first and moves to the next when one struggles.</p>'}<p>Every other model this key can use stays as an automatic backup when yours hit a limit.</p>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:6px"><input type="checkbox" id="mk_free" ${freeVal?'checked':''}>Count this key as free (no spending, used for free-first switching)</label></div>`;
+    const sv=$('#mk_save');if(sv)sv.disabled=!st.picked.length;
+    $('#mk_q').oninput=e=>{st.q=e.target.value;const p=e.target.selectionStart;drawModels();const n=$('#mk_q');n.focus();try{n.setSelectionRange(p,p)}catch(x){}};
+    const fo=$('#mk_fo');if(fo)fo.onchange=e=>{st.freeOnly=e.target.checked;drawModels()};
+    $('#mk_auto').onclick=()=>{st.picked=autoPick();st.free=null;drawModels();if(!st.picked.length)toast('No suitable model found')};
+    $('#mk_free').onchange=e=>{st.free=e.target.checked};
+    el.querySelectorAll('input[data-id]').forEach(c=>c.onchange=()=>{const id=c.dataset.id;if(c.checked){if(st.picked.length>=6){c.checked=false;toast('Six models at most. The rest of the key is used as backup automatically.');return}st.picked.push(id)}else st.picked=st.picked.filter(x=>x!==id);st.free=null;drawModels()});
+  }
+  const draw=(msg,bad)=>{
+    box.innerHTML=`<div style="padding:26px 30px 4px;text-align:center;position:relative"><button class="btn pill ic" id="mk_x" title="Close" aria-label="Close" style="position:absolute;right:18px;top:18px">${ic('x')}</button><div class="logo" style="width:60px;height:60px;margin:0 auto 12px"><svg class="i"><use href="#i-logo"/></svg></div>
+      <h2 style="font-size:24px;letter-spacing:-.3px">Add a multi-model API key</h2><p class="mut" style="margin-top:6px">One key that opens lots of models (OpenRouter, Together, Hugging Face, Fireworks and more). Paste it, load the list, tick the models you want. The key is saved on this PC only and sent only to the address below.</p></div>
+      <div class="modal-b" style="padding-top:12px">
+        <label class="fld">Service<select id="mk_pre">${MK_PRESETS.map((p,i)=>`<option value="${i}" ${i===st.pre?'selected':''}>${esc(p[0])}</option>`).join('')}</select></label>
+        <label class="fld">Endpoint address<input id="mk_base" value="${esc(st.base)}" placeholder="https://example.com/v1" autocomplete="off"></label>
+        <label class="fld">Name<input id="mk_name" value="${esc(st.label)}" placeholder="My models" maxlength="24" autocomplete="off"></label>
+        <label class="fld">API key<input id="mk_key" type="password" autocomplete="off" value="${esc(st.key)}" placeholder="Paste your key here"></label>
+        <div><button class="btn gold" id="mk_load">${ic('refresh')}Load models</button></div>
+        <div id="mk_msg" style="font-size:12.5px;min-height:18px;color:${bad?'var(--red)':'var(--mut)'}">${esc(msg||'')}</div>
+        <div id="mk_models"></div></div>
+      <div class="modal-f"><button class="btn ghost" id="mk_cancel">Cancel</button><button class="btn gold" id="mk_save" disabled>${ic('check')}Save and connect</button></div>`;
+    $('#mk_x').onclick=closeW;$('#mk_cancel').onclick=closeW;
+    $('#mk_pre').onchange=e=>{st.pre=+e.target.value;const p=MK_PRESETS[st.pre];st.base=p[1];st.label=p[1]?p[0]:'';$('#mk_base').value=st.base;$('#mk_name').value=st.label;st.rows=[];st.picked=[];drawModels()};
+    $('#mk_base').oninput=e=>{st.base=e.target.value.trim()};$('#mk_name').oninput=e=>{st.label=e.target.value};$('#mk_key').oninput=e=>{st.key=e.target.value.trim()};
+    const load=async()=>{
+      if(!/^https?:\/\//.test(st.base)){$('#mk_msg').style.color='var(--red)';$('#mk_msg').textContent='Type the endpoint address first (it starts with https://).';return}
+      if(!st.key){$('#mk_msg').style.color='var(--red)';$('#mk_msg').textContent='Paste your key first.';return}
+      const b=$('#mk_load');b.classList.add('busy');$('#mk_msg').style.color='var(--mut)';$('#mk_msg').textContent='Asking the service which models this key can use...';
+      const r=await api('/api/multikey/models',{base:st.base,key:st.key});b.classList.remove('busy');
+      if(!r.ok){$('#mk_msg').style.color='var(--red)';$('#mk_msg').textContent=r.error||'Could not load the models.';return}
+      st.rows=r.models;st.picked=autoPick();st.free=null;
+      $('#mk_msg').textContent=st.rows.length+' models found. I picked two to start; change the ticks if you like.';drawModels();
+    };
+    $('#mk_load').onclick=load;$('#mk_key').addEventListener('keydown',e=>{if(e.key==='Enter')load()});
+    $('#mk_save').onclick=async()=>{
+      if(!st.picked.length)return;const b=$('#mk_save');b.classList.add('busy');$('#mk_msg').style.color='var(--mut)';$('#mk_msg').textContent='Saving...';
+      const allFree=st.picked.every(freeOf);const free=st.free===null?allFree:st.free;
+      const r=await api('/api/multikey/save',{label:st.label||MK_PRESETS[st.pre][0],base:st.base,key:st.key,models:st.picked,free});
+      if(!r.ok||!r.config){b.classList.remove('busy');$('#mk_msg').style.color='var(--red)';$('#mk_msg').textContent=r.error||'Could not save.';return}
+      S.cfg=r.config;const sw=await api('/api/config',{provider:r.id});if(sw.config)S.cfg=sw.config;
+      $('#mk_msg').textContent='Testing the first model...';
+      const t=await api('/api/test',{provider:r.id,tier:0});b.classList.remove('busy');
+      if(t.ok){closeW();S.forced='auto';toast('Connected: '+S.cfg.providers[r.id].label+' with '+st.picked.length+' model'+(st.picked.length>1?'s':''));return}
+      $('#mk_msg').style.color='var(--red)';$('#mk_msg').textContent='Saved, but the first model did not answer: '+(t.error||'unknown error')+'. Pick another first model and save again.';
+    };
+    drawModels();
+    if(!msg)setTimeout(()=>{const k=$('#mk_key');if(k)k.focus()},50);
   };
   w.classList.add('show');draw();
 }
@@ -1116,7 +1194,7 @@ function drawAiMenu(){
   const m=$('#aiMenu');
   const ents=Object.entries(S.cfg.providers).sort((a,b)=>(a[1].group?1:0)-(b[1].group?1:0));let lastG='';
   m.innerHTML=`<div class="aihead">All AI providers (${ents.filter(e=>e[1].has_key).length} connected of ${ents.length})</div>`+ents.map(([k,v])=>{const g=v.group||'Main providers';const hd=g!==lastG?(lastG=g,`<div class="aihead" style="padding-top:12px;color:var(--mut)">${esc(g)}</div>`):'';return hd+`<button class="airow ${k===S.cfg.provider?'on':''}" data-k="${k}"><i class="kd ${v.has_key?'ok':''}"></i><span class="aitx"><b>${esc(v.label)}</b><em>${v.tiers.map(t=>esc(t.model||'(no model)')).join('  /  ')}</em></span><span class="aist ${v.has_key?'ok':''}">${k===S.cfg.provider?'In use':v.has_key?'Connected':v.nokey?'Enable':'Needs key'}</span></button>`}).join('')
-    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
+    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
   m.querySelectorAll('.airow').forEach(b=>b.onclick=async()=>{
     const k=b.dataset.k,v=S.cfg.providers[k];m.hidden=true;
     if(!v.has_key){openWelcome(k);return}
@@ -1125,7 +1203,7 @@ function drawAiMenu(){
     const r=await api('/api/config',{provider:k});if(!r.config){toast(r.error||'Could not switch');return}
     S.cfg=r.config;S.forced='auto';S.cur=null;render();if(!S.sid)showHero();toast('Now talking with '+v.label);
   });
-  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
+  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openMultiKey()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
 }
 document.addEventListener('click',e=>{const m=$('#aiMenu');if(m&&!m.hidden&&!e.target.closest('#aiMenu'))m.hidden=true});
 

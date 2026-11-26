@@ -1830,6 +1830,70 @@ def remove_custom_provider(pid):
         save_cfg(cfg)
 
 
+def multikey_models(base, key):
+    """List the models one key can use, before anything is saved. The key goes only to the endpoint the user typed."""
+    base = str(base or "").strip().rstrip("/")
+    key = str(key or "").strip()
+    if not base.startswith("http"):
+        return {"ok": False, "error": "The endpoint must start with https://"}
+    if not key:
+        return {"ok": False, "error": "Paste your key first."}
+    try:
+        j = http_json(base + "/models", key, method="GET", timeout=30)
+    except LLMError as e:
+        return {"ok": False, "error": friendly(e.msg)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    rows = j.get("data") if isinstance(j, dict) else j
+    out, seen = [], set()
+    for m in rows or []:
+        if not isinstance(m, dict) or not m.get("id"):
+            continue
+        mid = _norm_id(str(m["id"]))
+        if mid in seen:
+            continue
+        seen.add(mid)
+        pr = m.get("pricing") if isinstance(m.get("pricing"), dict) else {}
+        free = mid.endswith(":free") or (bool(pr) and str(pr.get("prompt", "x")) in ("0", "0.0") and str(pr.get("completion", "x")) in ("0", "0.0"))
+        sp = m.get("supported_parameters")
+        out.append({"id": mid, "free": bool(free), "tools": ("tools" in sp) if isinstance(sp, list) else None})
+    if not out:
+        return {"ok": False, "error": "The key worked but the service listed no models. Check the endpoint address."}
+    out.sort(key=lambda r: r["id"].lower())
+    return {"ok": True, "models": out}
+
+
+def multikey_save(label, base, key, models, free=True):
+    """Save one key that opens many models: the picked models become the ladder (first = tried first), every other model of the key stays a backup."""
+    label = str(label or "").strip()[:24]
+    base = str(base or "").strip().rstrip("/")
+    key = str(key or "").strip()
+    picks = list(dict.fromkeys(str(x).strip() for x in (models or []) if str(x).strip()))[:6]
+    if not base.startswith("http") or not key or not picks:
+        raise ValueError("Give it an endpoint, a key and at least one model.")
+    n = len(picks)
+    names = ["Lite"] if n == 1 else ["Lite", "Pro"] if n == 2 else ["Lite"] + (["Standard"] if n == 3 else ["Standard %d" % (i + 1) for i in range(n - 2)]) + ["Pro"]
+    tiers = [{"name": names[i], "model": picks[i], "in": 0.0, "cache": 0.0, "out": 0.0, "rpm": 0, "rpd": 0} for i in range(n)]
+    with _lock:
+        cfg = load_cfg()
+        pid = next((k for k, v in cfg["providers"].items() if str(v.get("base", "")).rstrip("/").lower() == base.lower()), None)
+        if pid is None:
+            label = label or "Multi-model key"
+            pid = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:24] or "multikey"
+            base_id, k = pid, 2
+            while pid in cfg["providers"]:
+                pid = "%s-%d" % (base_id, k)
+                k += 1
+            cfg["providers"][pid] = {"label": label, "base": base, "key": "", "free": bool(free), "custom": True, "tiers": tiers}
+        prov = cfg["providers"][pid]
+        prov["key"] = key
+        prov["tiers"] = tiers
+        prov["free"] = bool(free)
+        save_cfg(cfg)
+    _pool_cache.pop(pid, None)
+    return pid
+
+
 def openrouter_autoconfig():
     """Ask OpenRouter's public model list which free models can use tools, and put two of them in the ladder."""
     req = urllib.request.Request("https://openrouter.ai/api/v1/models", headers={"User-Agent": "aqua-code/1.0"})
@@ -2747,6 +2811,14 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/provider/add":
                 try:
                     pid = add_custom_provider(b.get("label"), b.get("base"))
+                    return self._send(200, {"ok": True, "id": pid, "config": masked_cfg(load_cfg())})
+                except ValueError as e:
+                    return self._send(200, {"ok": False, "error": str(e)})
+            if u.path == "/api/multikey/models":
+                return self._send(200, multikey_models(b.get("base"), b.get("key")))
+            if u.path == "/api/multikey/save":
+                try:
+                    pid = multikey_save(b.get("label"), b.get("base"), b.get("key"), b.get("models"), b.get("free", True))
                     return self._send(200, {"ok": True, "id": pid, "config": masked_cfg(load_cfg())})
                 except ValueError as e:
                     return self._send(200, {"ok": False, "error": str(e)})
