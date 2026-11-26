@@ -2,7 +2,8 @@
 
 # Aqua Code
 
-<video src="https://github.com/saadvvsaadvv344-star/aqua-code/raw/main/video/aqua-code-explainer-github.mp4" controls muted playsinline width="100%"></video>
+<p align="center"><a href="video/aqua-code-explainer-github.mp4"><img src="video/aqua-code-preview.gif" width="640" alt="Aqua Code preview: click to play the full 5-minute video"></a></p>
+<p align="center"><b>Plays right here. Click it to watch the full 5-minute video with sound</b> (every feature and the free API key tutorial).</p>
 
 **Your own coding agent. Bring your DeepSeek or Gemini key, start cheap, escalate only when needed.**
 
