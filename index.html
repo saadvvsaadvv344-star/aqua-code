@@ -105,7 +105,8 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .si.on{background:linear-gradient(145deg,var(--g1),var(--g2));border-color:var(--gb2);box-shadow:inset 1px 1px 0 var(--hi)}
 .si .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
 .si .c{font-size:11px;color:var(--dim)}
-.si .x{opacity:0;color:var(--mut);padding:2px;border-radius:8px}.si:hover .x{opacity:1}.si .x:hover{color:var(--red)}
+.si .x{opacity:.5;color:var(--mut);padding:6px;margin:-4px -4px -4px 0;border-radius:8px}.si:hover .x{opacity:1}.si .x:hover{color:var(--red)}
+.si .x.arm{opacity:1;background:var(--red);color:#fff;padding:3px 9px;font-size:11px;font-weight:700;margin:0}
 .run-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);animation:pulse 1.2s infinite}
 @keyframes pulse{50%{opacity:.35}}
 .tree{overflow:auto;max-height:34vh;font-size:12.5px;padding:0 0 10px}
@@ -538,7 +539,7 @@ void main(){
   <aside class="col glass lg left" id="left">
     <div class="brand"><div class="logo"><svg class="i"><use href="#i-logo"/></svg></div><div><b>Aqua Code</b><small>your own coding agent</small></div></div>
     <div class="side-sec"><button class="btn gold" id="newChat" style="justify-content:center"><svg class="i"><use href="#i-plus"/></svg>New task</button></div>
-    <div class="side-sec" style="flex:1"><div class="lbl">Tasks</div><div class="sess" id="sess"></div></div>
+    <div class="side-sec" style="flex:1"><div class="lbl">Tasks <button class="btn ic" id="clearAll" title="Delete all old tasks of this project" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-trash"/></svg></button></div><div class="sess" id="sess"></div></div>
     <div class="side-sec"><div class="lbl">Workspace <button class="btn ic" id="notesBtn" title="Project notes: what every AI did" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-file"/></svg></button><button class="btn ic" id="reftree" title="Refresh" style="padding:4px"><svg class="i" style="width:14px;height:14px"><use href="#i-refresh"/></svg></button></div>
       <div class="ws" id="wspath">-</div><div class="tree" id="tree"></div><div class="mut" style="font-size:11px;text-align:center;padding:4px 0 2px;letter-spacing:.4px">Made by Saad</div></div>
   </aside>
@@ -798,7 +799,9 @@ function renderHead(){
 }
 function renderSide(){
   $('#sess').innerHTML=S.sessions.length?S.sessions.map(s=>`<button class="si ${s.id===S.sid?'on':''}" data-id="${s.id}">${S.runId&&s.id===S.sid?'<i class="run-dot"></i>':ic('term','width:15px;height:15px;color:var(--dim)')}<span class="t">${esc(s.title)}</span><span class="c">${fm(s.cost)}</span><span class="x" data-del="${s.id}">${ic('x','width:14px;height:14px')}</span></button>`).join(''):'<div class="mut" style="padding:10px;font-size:12.5px">No tasks yet.</div>';
-  $('#sess').querySelectorAll('.si').forEach(b=>b.onclick=e=>{const del=e.target.closest('[data-del]');if(del){e.stopPropagation();if(confirm('Delete this task?')){api('/api/session/delete',{id:del.dataset.del}).then(()=>{if(S.sid===del.dataset.del)newChat();loadState()})}return}openSession(b.dataset.id)});
+  $('#sess').querySelectorAll('.si').forEach(b=>b.onclick=e=>{const del=e.target.closest('[data-del]');if(del){e.stopPropagation();
+    if(!del.classList.contains('arm')){del.classList.add('arm');del.dataset.h=del.innerHTML;del.textContent='Delete?';clearTimeout(del._t);del._t=setTimeout(()=>{del.classList.remove('arm');if(del.dataset.h)del.innerHTML=del.dataset.h},3000);return}
+    clearTimeout(del._t);api('/api/session/delete',{id:del.dataset.del}).then(()=>{if(S.sid===del.dataset.del){S.runId=null;newChat()}loadState();toast('Task deleted')});return}openSession(b.dataset.id)});
 }
 function renderChips(){
   const t=tiers(),cur=S.cur&&S.cur.tier;
@@ -1203,6 +1206,11 @@ $('#openLeft').onclick=()=>$('#left').classList.toggle('show');
 $('#openRight').onclick=()=>$('#right').classList.add('show');$('#closeRight').onclick=()=>$('#right').classList.remove('show');
 function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('ac-theme',t)}catch(e){}$('#themeBtn').innerHTML=ic(t==='dark'?'sun':'moon')}
 function glassBtnSync(){const b=$('#glassBtn');if(b){b.classList.toggle('on',FX.mode==='off');b.title=FX.mode==='off'?'Liquid glass is OFF (click to turn on)':'Liquid glass is on (click to turn off)'}}
+$('#clearAll').onclick=function(){const b=this;
+  if(!S.sessions.length){toast('No tasks to delete');return}
+  if(!b.classList.contains('arm')){b.classList.add('arm');b.dataset.h=b.innerHTML;b.textContent='Delete all '+S.sessions.length+'?';b.style.color='var(--red)';clearTimeout(b._t);b._t=setTimeout(()=>{b.classList.remove('arm');b.innerHTML=b.dataset.h;b.style.color=''},4000);return}
+  clearTimeout(b._t);b.classList.remove('arm');b.innerHTML=b.dataset.h;b.style.color='';
+  api('/api/session/delete',{all:true}).then(r=>{S.runId=null;newChat();loadState();toast('Deleted '+((r&&r.deleted)||0)+' tasks')})};
 $('#glassBtn').onclick=()=>{FX.mode=FX.mode==='off'?'lite':'off';try{localStorage.setItem('ac-fx',FX.mode)}catch(e){}FX.apply();glassBtnSync();toast(FX.mode==='off'?'Liquid glass off: plain look':'Liquid glass on')};
 setTimeout(glassBtnSync,0);
 $('#themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');

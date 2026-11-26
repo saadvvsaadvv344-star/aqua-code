@@ -2321,9 +2321,18 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, fetch_balance(b.get("provider") or load_cfg()["provider"]))
             if u.path == "/api/session/delete":
                 with _lock:
-                    sessions.pop(b.get("id"), None)
+                    if b.get("all"):
+                        wk = ws_key(load_cfg()["workspace"])
+                        ids = [k for k, v in sessions.items() if v.get("workspace") == wk]
+                    else:
+                        ids = [b.get("id")] if b.get("id") else []
+                    for r in list(runs.values()):
+                        if r.sess.get("id") in ids and not r.done:
+                            r.stop = True                       # a chat that is still working is stopped, then deleted
+                    for i in ids:
+                        sessions.pop(i, None)
                 save_sessions()
-                return self._send(200, {"ok": True})
+                return self._send(200, {"ok": True, "deleted": len(ids)})
             if u.path == "/api/session/rename":
                 s = sessions.get(b.get("id"))
                 if s:
