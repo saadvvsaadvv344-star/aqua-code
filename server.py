@@ -2029,6 +2029,36 @@ def parse_key_lines(text):
     return out[:30]
 
 
+GUESS_MODELS = ["gpt-oss-20b", "gpt-oss-120b", "llama-3.3-70b-instruct", "llama-3.1-8b-instruct", "llama3.1-8b", "mistral-small-latest",
+                "qwen3-32b", "gemma-3-27b-it", "deepseek-chat", "glm-4.7-flash", "openai/gpt-oss-20b", "meta-llama/Llama-3.3-70B-Instruct"]
+
+
+def identify_and_connect(key, hint):
+    """A key with no recognisable start: try the service whose key page the user just opened first, then a few others whose keys
+    have no special start. The first one that really answers wins. Each try is one request; failed tries change nothing."""
+    cfg = load_cfg()
+    provs = cfg["providers"]
+    distinct = {svc for _p, svc in KEY_PREFIXES}
+    cands = []
+    if hint in provs and not has_access(provs[hint]):
+        cands.append(hint)
+    for pid, v in provs.items():
+        if pid in cands or has_access(v) or v.get("custom") or v.get("nokey") or "{" in v.get("base", "") or pid in distinct:
+            continue
+        cands.append(pid)
+    tried, last = [], None
+    for pid in cands[:6]:
+        tried.append(provs[pid]["label"])
+        r = connect_key("prov", pid, key)
+        if r.get("ok") or r.get("saved"):
+            if len(tried) > 1:
+                r["detail"] = "Found by trying %s. %s" % (", ".join(tried), r.get("detail", ""))
+            return r
+        last = r
+    detail = "No service accepted this key. Tried: %s. %s" % (", ".join(tried) or "none", (last or {}).get("detail", ""))
+    return {"service": tried[0] if tried else "?", "ok": False, "detail": detail[:400]}
+
+
 def _label_of(pid):
     return load_cfg()["providers"][pid]["label"]
 
@@ -2104,11 +2134,13 @@ def connect_key(kind, ident, key):
         t = test_connection(pid, 0)
         # the first model may simply not exist for this account: try other models of the same key before giving up
         tried = {load_cfg()["providers"][pid]["tiers"][0].get("model")}
-        for _ in range(3):
+        for _ in range(7):
             if t.get("ok") or not re.search(r"HTTP (400|404|422)", str(t.get("error", ""))):
                 break
             r = list_models(pid)
             alts = [i for i in auto_pick_ids(r.get("ids") or []) if i not in tried] if r.get("ok") else []
+            if not alts:                                      # no model list at this service: try well-known model names one by one
+                alts = [g for g in GUESS_MODELS if g not in tried][:1]
             if not alts:
                 break
             tried.add(alts[0])
@@ -2132,7 +2164,7 @@ def connect_key(kind, ident, key):
         return {"service": "?", "ok": False, "detail": str(e)[:200]}
 
 
-def bulk_keys(text):
+def bulk_keys(text, hint_id=None, any_key=False):
     results, seen = [], set()
     pairs = parse_key_lines(text)
     if not pairs:
@@ -2144,6 +2176,11 @@ def bulk_keys(text):
         cfg = load_cfg()
         svc = resolve_service(name, key, cfg)
         hint = "%s...%s" % (key[:4], key[-3:]) if len(key) > 10 else "key"
+        if not svc and any_key and not name:
+            r = identify_and_connect(key, hint_id)
+            r["hint"] = hint
+            results.append(r)
+            continue
         if not svc:
             results.append({"hint": hint, "service": name or "?", "ok": False,
                             "detail": "Unknown service for this key. Write it as  name: key  (for example  mistral: your-key  or  together: your-key)."})
@@ -3449,7 +3486,7 @@ class H(BaseHTTPRequestHandler):
                 except ValueError as e:
                     return self._send(200, {"ok": False, "error": str(e)})
             if u.path == "/api/keys/bulk":
-                return self._send(200, bulk_keys(b.get("text")))
+                return self._send(200, bulk_keys(b.get("text"), b.get("hint"), bool(b.get("any"))))
             if u.path == "/api/multikey/models":
                 return self._send(200, multikey_models(b.get("base"), b.get("key")))
             if u.path == "/api/multikey/save":
