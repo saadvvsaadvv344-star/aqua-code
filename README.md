@@ -237,3 +237,8 @@ Press **Sync my projects** in the AI menu. It keeps your project folders, chats 
 * **Limits (free plan):** about 20,000 writes and 50,000 reads a day, 1 GB stored. Aqua uploads at most 40 changes per round, so it never runs out.
 * **Safe for Windows Defender and macOS:** no installer, no extra program, no startup entry, no script download. It is the same Python code as Aqua, talking HTTPS to Google (`firestore.googleapis.com`, `securetoken.googleapis.com`) and nothing else. It only runs while Aqua Code is open. If a security program ever complains, look at Windows Security, Protection history, and allow Aqua's folder there. Do not turn protection off.
 * **Test it:** `python tools/sync_selftest.py` simulates a PC and a Mac against a fake Firestore (30 checks).
+
+## Two switches you can see
+
+* **Liquid glass switch** (top bar): a labeled switch, ON or OFF. Click it, press Space, or drag the glass knob. It flows while ON, springs when you flip it, and ripples across the screen so the change is obvious. It is remembered, and it follows the Glass quality setting.
+* **AI picker** (chat bar, left of the Auto / Lite / Pro chips): shows which AI is used (Auto, or for example Groq Pro). Click it to choose Auto or any model of any connected AI. Picking one switches to that AI and uses exactly that model for the next message.
