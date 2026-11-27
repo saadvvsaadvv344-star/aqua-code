@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
     "understand_first": True,     # a stronger model first turns a messy request into a clear brief
     "pool_models": True,          # when every configured model is limited, also try other models of the same provider
     "level": "balanced",          # working level: low (gentle), balanced, high (full speed)
-    "no_key_fallback": False,     # OFF: the anonymous model (LLM7) has a tiny token allowance and answers "add funds" to a real request; turn it on only for short chats
+    "no_key_fallback": True,      # with no key saved, use the free no-key AIs that really work (Kilo Code first, OVHcloud as a slow backup)
     "failover_paid": False,       # ...but only to FREE providers unless this is on (so it never spends money by surprise)
     "gateway": True,              # the one-key gateway at /v1 (see gateway_plan); needs the gateway key
     "gateway_key": "",            # created on first use, never sent to the page except by /api/gateway
@@ -185,6 +185,8 @@ def load_cfg():
             for k in ("info", "group", "nokey"):
                 if k in cv:
                     cfg["providers"][pid][k] = cv[k]
+            if cv.get("nokey") and not cfg["providers"][pid].get("key"):
+                cfg["providers"][pid]["tiers"] = copy.deepcopy(cv["tiers"])        # the models and limits of a no-key AI are managed here, so a fix reaches everyone
     os.makedirs(cfg["workspace"], exist_ok=True)
     return cfg
 
@@ -516,9 +518,10 @@ class LLMError(Exception):
 
 def http_json(url, key, payload=None, timeout=240, method="POST"):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={
-        "Content-Type": "application/json", "Authorization": "Bearer " + key,
-        "User-Agent": "aqua-code/1.0"})
+    hdrs = {"Content-Type": "application/json", "User-Agent": "aqua-code/1.0"}
+    if key and key != "none":                                   # a no-key AI must get NO Authorization header: Kilo and OVHcloud refuse a made-up token
+        hdrs["Authorization"] = "Bearer " + key
+    req = urllib.request.Request(url, data=data, method=method, headers=hdrs)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
@@ -1270,6 +1273,11 @@ def openrouter_catalog():
 
 def pool_models(pid, tiers):
     """Other chat models the provider offers with this same key. Each model has its own free quota, so when the configured ones are limited, Aqua just uses these instead of waiting."""
+    try:
+        if load_cfg()["providers"].get(pid, {}).get("nokey"):          # the other models of a no-key service need a key: never try them
+            return []
+    except Exception:
+        pass
     if pid == "openrouter":                         # only the FREE models that can use tools: a paid one would just answer "no credit"
         have_ = {t["model"] for t in tiers}
         ids = [m["id"] for m in openrouter_catalog() if m["free"] and m["tools"] and m["id"] not in have_ and not no_credit(pid + ":" + m["id"])]
@@ -1411,12 +1419,12 @@ def agent_loop(run, user_text, forced_tier):
     sess = run.sess
     cfg = load_cfg()
     notice = None
-    if cfg.get("no_key_fallback", False) and not any(has_access(v) for v in cfg["providers"].values()):
+    if cfg.get("no_key_fallback", True) and not any(has_access(v) for v in cfg["providers"].values()):
         first = nokey_enable()
         if first:
             cfg = load_cfg()
-            notice = ("No API key is saved yet, so Aqua is using %s (%s), a free anonymous model. It is slow and your prompts are public. "
-                      "Add a free key for faster, private use." % (cfg["providers"][first]["label"], cfg["providers"][first]["tiers"][0]["model"]))
+            notice = ("No API key is saved yet, so Aqua is using %s (%s), a free AI that needs no key. It works, but it is shared and limited, and the service can see your prompts, "
+                      "so never send secrets. A free key (AI menu, Get free keys) is faster and private." % (cfg["providers"][first]["label"], cfg["providers"][first]["tiers"][0]["model"]))
     pid = cfg["provider"]
     plabel = cfg["providers"][pid]["label"]
     tiers = cfg["providers"][pid]["tiers"]
@@ -1884,10 +1892,11 @@ def nokey_enable():
     first = None
     with _lock:
         cfg = load_cfg()
-        for k, v in cfg["providers"].items():
-            if v.get("nokey"):
-                v["enabled"] = True
-                first = first or k
+        ids = [k for k, v in cfg["providers"].items() if v.get("nokey")]
+        for k in ids:
+            cfg["providers"][k]["enabled"] = True
+        pref = [k for k in ("kilo", "ovh", "llm7") if k in ids] + [k for k in ids if k not in ("kilo", "ovh", "llm7")]
+        first = pref[0] if pref else None                     # the best one first: Kilo is fast and works; OVHcloud is slow; LLM7 has a tiny allowance
         if first:
             cfg["provider"] = first
             save_cfg(cfg)
@@ -3401,8 +3410,10 @@ def gateway_key(cfg=None):
 
 
 def _open_chat(url, key, payload, timeout=240):
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST", headers={
-        "Content-Type": "application/json", "Authorization": "Bearer " + key, "User-Agent": "aqua-code/1.0"})
+    hdrs = {"Content-Type": "application/json", "User-Agent": "aqua-code/1.0"}
+    if key and key != "none":
+        hdrs["Authorization"] = "Bearer " + key
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST", headers=hdrs)
     try:
         return urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.HTTPError as e:

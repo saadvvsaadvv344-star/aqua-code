@@ -442,31 +442,30 @@
     "kilo": {
       "label": "Kilo Code",
       "base": "https://api.kilo.ai/api/gateway",
-      "group": "Free tiers",
-      "nokey": false,
+      "group": "No key needed (anonymous)",
+      "nokey": true,
       "tiers": [
         {
           "name": "Lite",
           "model": "kilo-auto/free",
-          "rpm": 3
+          "rpm": 10
         },
         {
           "name": "Pro",
           "model": "openrouter/free",
-          "rpm": 3
+          "rpm": 10
         }
       ],
       "info": {
-        "tag": "Needs a key now",
-        "c": "var(--amber)",
-        "sub": "The list says no key, but it asks for one.",
-        "url": "https://kilo.ai",
+        "tag": "No key",
+        "c": "var(--green)",
+        "sub": "Free and anonymous. Fast. Works right now.",
+        "url": "",
         "steps": [
-          "Create a free account on the service.",
-          "Create an API key or token.",
-          "Paste it below."
+          "Nothing to sign up for.",
+          "It is used automatically when no key is saved, or press Enable."
         ],
-        "note": "Kilo Code now answers 401 without a signed-in token. The community list still says no key is needed, so it is out of date."
+        "note": "Checked 2026-11-27: it answered 8 of 8 agent-sized requests with tool calls, without any key. Free and anonymous, so Kilo can see your prompts: never send secrets. Limits are per network address (about 200 requests an hour on its list)."
       }
     },
     "llm7": {
@@ -490,14 +489,14 @@
           "Nothing to sign up for.",
           "Press Enable below."
         ],
-        "note": "Checked 2026-11-27: gpt-oss:20b answers a short message without a key, but a real Aqua request (several thousand tokens) gets 'Your free token allowance has been reached... add funds' on the first try. So it cannot build projects. Use it only for a quick chat, and get a free key (Gemini, OpenRouter, Groq) for real work. Anonymous: your prompts are public, never send secrets."
+        "note": "Checked 2026-11-27: with an agent-sized request it answered 429 'free token allowance has been reached' and asked to retry in about 24 hours. Kept only as a last backup for short chats. Anonymous: never send secrets."
       }
     },
     "ovh": {
       "label": "OVHcloud AI",
       "base": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-      "group": "Free tiers",
-      "nokey": false,
+      "group": "No key needed (anonymous)",
+      "nokey": true,
       "tiers": [
         {
           "name": "Lite",
@@ -511,16 +510,15 @@
         }
       ],
       "info": {
-        "tag": "Needs a key now",
+        "tag": "No key (slow)",
         "c": "var(--amber)",
-        "sub": "The list says no key, but it asks for one.",
-        "url": "https://www.ovhcloud.com/en/public-cloud/ai-endpoints/",
+        "sub": "Anonymous: 2 requests a minute. Used as a backup.",
+        "url": "",
         "steps": [
-          "Create a free account on the service.",
-          "Create an API key or token.",
-          "Paste it below."
+          "Nothing to sign up for.",
+          "Enabled together with the other no-key AIs."
         ],
-        "note": "OVHcloud AI Endpoints now answers 403 without a token. The community list still says no key is needed, so it is out of date."
+        "note": "Checked 2026-11-27: answers without a key but allows only about 2 requests a minute without an account, so it is slow. A free OVHcloud account raises that."
       }
     },
     "pollinations": {
@@ -541,14 +539,14 @@
       "info": {
         "tag": "Needs a key now",
         "c": "var(--amber)",
-        "sub": "The list says no key, but it asks for one.",
+        "sub": "Anonymous use runs out after one request (402).",
         "url": "https://enter.pollinations.ai",
         "steps": [
           "Create a free account on the service.",
           "Create an API key or token.",
           "Paste it below."
         ],
-        "note": "Pollinations now answers 401 without a key. The community list still says no key is needed, so it is out of date."
+        "note": "Checked 2026-11-27: without a key it answers once, then 402 payment required. Create a free account and use its key."
       }
     },
     "unorouter": {

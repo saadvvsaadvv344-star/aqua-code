@@ -1063,7 +1063,7 @@ function drawSettings(){
    <label class="sw"><input id="f_rev" type="checkbox" ${draft.review_gate!==false?'checked':''}><i></i>Review: when the AI says it is done, a stronger model checks the result against the brief and sends the AI back to fix real problems</label>
    <label class="sw"><input id="f_pool" type="checkbox" ${draft.pool_models!==false?'checked':''}><i></i>When every model I set is limited, also try the provider's other models with the same key (each has its own free limit) instead of waiting</label>
    <label class="sw"><input id="f_fop" type="checkbox" ${draft.failover_paid?'checked':''}><i></i>Also allow switching to paid providers (can spend money; off = free ones only)</label>
-   <label class="sw"><input id="f_nk" type="checkbox" ${draft.no_key_fallback===true?'checked':''}><i></i>With no API key saved, use the free anonymous model (LLM7). Its allowance is tiny: it is only good for a short chat, it cannot build projects (it answers "add funds"), and your prompts are public.</label>
+   <label class="sw"><input id="f_nk" type="checkbox" ${draft.no_key_fallback!==false?'checked':''}><i></i>With no API key saved, use the free AIs that need no key (Kilo Code first, OVHcloud as a slow backup). They work for building projects, but they are shared and limited and the service can see your prompts, so never send secrets.</label>
    <div class="g3"><label class="fld">Start tier<select id="f_start">${p.tiers.map((t,i)=>`<option value="${i}" ${draft.start_tier===i?'selected':''}>${i+1}. ${esc(t.name)}</option>`).join('')}</select></label>
    <label class="fld">Highest allowed tier<select id="f_max">${p.tiers.map((t,i)=>`<option value="${i}" ${Math.min(draft.max_tier,n-1)===i?'selected':''}>${i+1}. ${esc(t.name)}</option>`).join('')}</select></label>
    <label class="fld">Max steps per task<input id="f_ms" type="number" value="${draft.max_steps}"></label>
@@ -1158,7 +1158,7 @@ function openWelcome(prefer){
       <div class="guide"><b>How to get your ${esc(S.cfg.providers[pick].label)} key</b><ol>${inf.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><button class="btn ghost" id="w_open">${ic('arrow')}Open the key page</button><p>${esc(inf.note||'')}</p></div>
       ${S.cfg.providers[pick].nokey?`<div class="guide"><b>No key needed</b><p style="margin-top:6px">This service works without an account. Your prompts go to it anonymously, so do not send secrets.</p></div>`:`<label class="fld">${esc(S.cfg.providers[pick].label)} API key<input id="w_key" type="password" autocomplete="off" placeholder="Paste your key here"></label>`}
       <div id="w_msg" style="font-size:12.5px;min-height:18px;color:${bad?'var(--red)':'var(--mut)'}">${esc(msg||'')}</div></div>
-      <div class="modal-f"><button class="btn ghost" id="w_multi" style="margin-right:auto">${ic('plus')}Add multi-model API key</button>${showSkip?'<button class="btn ghost" id="w_skip">Continue anyway</button>':''}<button class="btn ghost" id="w_chk">${ic('check')}No key yet? Get one free in a minute</button><button class="btn gold" id="w_go">${ic('check')}${S.cfg.providers[pick].nokey?'Enable':'Connect'}</button></div>`;
+      <div class="modal-f"><button class="btn ghost" id="w_multi" style="margin-right:auto">${ic('plus')}Add multi-model API key</button>${showSkip?'<button class="btn ghost" id="w_skip">Continue anyway</button>':''}${Object.values(S.cfg.providers).some(p=>p.nokey)?`<button class="btn gold" id="w_nokey">${ic('bolt')}Use a free AI without a key</button>`:''}<button class="btn ghost" id="w_chk">${ic('check')}Get a free key in a minute</button><button class="btn gold" id="w_go">${ic('check')}${S.cfg.providers[pick].nokey?'Enable':'Connect'}</button></div>`;
     box.querySelectorAll('.wp').forEach(b=>b.onclick=()=>{pick=b.dataset.p;draw()});
     const wo=$('#w_open');if(inf.url)wo.onclick=()=>window.open(inf.url,'_blank','noopener');else wo.style.display='none';
     const go=async()=>{
@@ -1184,7 +1184,8 @@ function openWelcome(prefer){
     const wx=$('#w_x');if(wx)wx.onclick=closeW;const wm=$('#w_multi');if(wm)wm.onclick=openPasteKeys;
     $('#w_go').onclick=go;const wk=$('#w_key');if(wk)wk.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
     const sk=$('#w_skip');if(sk)sk.onclick=()=>{w.classList.remove('show');render();if(!S.sid)showHero()};
-    const ck=$('#w_chk');if(ck)ck.onclick=openKeyChecklist;           /* the old "try without a key" button is gone: the anonymous model cannot build projects */
+    const ck=$('#w_chk');if(ck)ck.onclick=openKeyChecklist;
+    const nk=$('#w_nokey');if(nk)nk.onclick=async()=>{nk.classList.add('busy');const r=await api('/api/nokey/enable',{});nk.classList.remove('busy');if(!r.config){draw(r.error||'No free no-key AI is available right now. Get a free key instead.',true);return}S.cfg=r.config;w.classList.remove('show');toast('Using '+S.cfg.providers[S.cfg.provider].label+', a free AI with no key. Shared and limited, and the service can see your prompts.');S.forced='auto';render();if(!S.sid)showHero()};
     if(!msg)setTimeout(()=>{const k=$('#w_key');if(k)k.focus()},50);
   };
   w.classList.add('show');draw();

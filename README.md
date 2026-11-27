@@ -242,3 +242,7 @@ Press **Sync my projects** in the AI menu. It keeps your project folders, chats 
 
 * **Liquid glass switch** (top bar): a labeled switch, ON or OFF. Click it, press Space, or drag the glass knob. It flows while ON, springs when you flip it, and ripples across the screen so the change is obvious. It is remembered, and it follows the Glass quality setting.
 * **AI picker** (chat bar, left of the Auto / Lite / Pro chips): shows which AI is used (Auto, or for example Groq Pro). Click it to choose Auto or any model of any connected AI. Picking one switches to that AI and uses exactly that model for the next message.
+
+## A free AI that needs no key
+
+Everyone can start without any account. With no API key saved, Aqua uses a free AI that needs no key (or press **Use a free AI without a key** in the Connect window). Checked on 2026-11-27 with real agent requests: **Kilo Code** answered every one, with tool calls, in about a second (a small web page was written, viewed and checked in 23 seconds). **OVHcloud** works as a slow backup (about 2 requests a minute without an account). LLM7 and Pollinations were tested too and do not work without a key (their free allowance ends at once), so they are not used. Aqua sends no Authorization header to a no-key AI, because these services refuse a made-up token. It is shared and limited, and the service can see your prompts, so never send secrets. A free key (Get free keys) is faster and private.
