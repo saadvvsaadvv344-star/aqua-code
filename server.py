@@ -1225,6 +1225,7 @@ def out_of_credit(e):
 
 
 _pool_cache = {}
+FREE_SUFFIX_SERVICES = {"unorouter", "crowllm", "openrouter"}
 NOCREDIT = {}                      # "pid:model" -> time it answered "out of credit": skipped for an hour so it is not retried again and again
 
 
@@ -1279,6 +1280,10 @@ def pool_models(pid, tiers):
     bad = re.compile(r"embed|tts|audio|image|vision|live|transcribe|guard|moderation|rerank|whisper|imagen|veo|lyria|dall|ocr|robotics|computer-use|learnlm|aqa|gemma|safeguard|-exp|exp-|preview-\d|thinking|search|ranker|code-?bison|text-bison", re.I)
     ids = [i for i in c[1] if i not in have and not bad.search(i) and not no_credit(pid + ":" + i)]
     ids.sort(key=lambda i: (0 if "flash" in i.lower() else 2 if "pro" in i.lower() else 1, len(i)))
+    if pid in FREE_SUFFIX_SERVICES:                 # gateways that mark their free models with ':free': use those, and plenty of them (each has its own small limit)
+        free_ids = [i for i in ids if i.endswith(":free")]
+        if free_ids:
+            return free_ids[:20]
     return ids[:8]
 
 
@@ -1932,7 +1937,7 @@ _BIG = re.compile(r"pro|large|ultra|opus|max|sonnet|\b(70|120|235|405|550)b\b|r1
 def auto_pick_ids(rows):
     """Two models from a key's list: a small fast one to start with, a big one to escalate to. Free ones first when the service marks them."""
     ids = [r if isinstance(r, str) else r["id"] for r in rows]
-    free = {r["id"] for r in rows if isinstance(r, dict) and r.get("free")}
+    free = {r["id"] for r in rows if isinstance(r, dict) and r.get("free")} | {i for i in ids if i.endswith(":free")}
     tools_no = {r["id"] for r in rows if isinstance(r, dict) and r.get("tools") is False}
     c = [i for i in ids if not _NOT_CHAT.search(i) and i not in tools_no]
     if any(i in free for i in c):

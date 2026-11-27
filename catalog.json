@@ -550,6 +550,51 @@
         ],
         "note": "Pollinations now answers 401 without a key. The community list still says no key is needed, so it is out of date."
       }
+    },
+    "unorouter": {
+      "label": "UnoRouter",
+      "base": "https://api.unorouter.com/v1",
+      "group": "Free tiers",
+      "tiers": [
+        {
+          "name": "Lite",
+          "model": ""
+        }
+      ],
+      "info": {
+        "tag": "Free: 140+ models",
+        "c": "var(--green)",
+        "sub": "One key, 300+ models, 140+ of them free (names end in :free).",
+        "url": "https://unorouter.com/token",
+        "steps": [
+          "Open the token page and sign in with Discord or GitHub (no card).",
+          "Create a token and copy it.",
+          "Paste it in Paste keys. Aqua picks the free models and uses all the others as backup."
+        ],
+        "note": "About 1 request a minute per model, so Aqua rotates between the free models. Community gateway: your prompts go to third parties, so never send secrets."
+      }
+    },
+    "anyapi": {
+      "label": "AnyAPI",
+      "base": "https://api.anyapi.ai/v1",
+      "group": "Free tiers",
+      "tiers": [
+        {
+          "name": "Lite",
+          "model": ""
+        }
+      ],
+      "info": {
+        "tag": "Free models",
+        "c": "var(--green)",
+        "sub": "20 requests a minute, 200 a day. No card.",
+        "url": "https://anyapi.ai",
+        "steps": [
+          "Create an AnyAPI account and an API key.",
+          "Paste it in Paste keys. Aqua finds the free models for you."
+        ],
+        "note": "Listed on the awesome-free-llm-apis page: Llama 3.3 70B, Qwen3 Coder, Gemma 4, GPT-OSS-120B and more. Gateway: your prompts go to third parties."
+      }
     }
   }
 }
