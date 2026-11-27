@@ -636,7 +636,7 @@ TOOLS = [
      "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "download_3d_model", "description": "Download a .glb/.gltf/.obj/.stl from an allowed site (GitHub, threejs.org...) into models/.",
      "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "name": {"type": "string"}}, "required": ["url"]}}},
-    {"type": "function", "function": {"name": "recipes", "description": "Tested, working starter projects. Call with no name to list them, or with a name to copy one into the workspace (default index.html) and then adapt it. Use this FIRST for games, shaders/slime/jelly, 3D scenes: starting from a working recipe is far better than inventing from scratch.",
+    {"type": "function", "function": {"name": "recipes", "description": "Tested, working starter projects. Call with no name to list them, or with a name to copy one into the workspace (default index.html) and then adapt it. Use one ONLY when it matches what the user asked for (same subject); never change the user's subject to fit a recipe. If none fits, build from scratch.",
      "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "path": {"type": "string", "description": "where to copy it, default index.html"}, "overwrite": {"type": "boolean"}}, "required": []}}},
     {"type": "function", "function": {"name": "look_page", "description": "LOOK at a web page you built or are fixing (the Preview or a localhost dev server): returns a screenshot (if your model can see images), the browser console errors, and the visible text. Use it after building a page and before and after fixing a bug. mobile=true checks a phone size.",
      "parameters": {"type": "object", "properties": {"url": {"type": "string", "description": "workspace path like index.html, or http://localhost:PORT/..."},
@@ -962,7 +962,8 @@ def system_prompt(ws, extra=""):
             "BUILD METHOD (this is how good engineers work, so follow it even if you are a small model): first state your plan in 3-5 lines. Then build in LAYERS: (1) a minimal version that really runs, written in a single write_file of at most ~250 lines; verify it (run it or look_page). "
             "(2) add features one or two at a time with edit_file, verifying after each. (3) polish. NEVER write one giant file in one go, never leave TODOs, placeholders or fake functions, and never claim something works without having run or looked at it. "
             "If the user message is short or vague (for example \"fix it\", \"it does not work\", \"add fur\"), work out what they mean from the files and the project notes instead of guessing or starting over, and keep everything that already works. "
-            "RECIPES: for games, shaders (slime, jelly, liquid, glass), 3D scenes or arcade/2D games, FIRST call recipes: if one fits, copy it and adapt it step by step (they are tested and work) instead of inventing from scratch. "
+            "RECIPES: for a game or a 3D scene you may call recipes: use a recipe ONLY if it is really the same kind of thing the user asked for, then adapt it step by step. "
+            "NEVER change what the user asked for to fit a recipe or an earlier project: a logo is a logo, a website is a website, a car stand is a car stand. If no recipe fits, build from scratch. "
             "SEPARATION: this folder is one project. If its existing files clearly belong to a DIFFERENT project than what the user now asks for (for example a PC-builder app when they ask for a cat game), "
             "do NOT read, reuse or overwrite them: tell the user to click the + next to Project in the sidebar to start a new empty project, then stop. Never try to open folders outside the workspace; they belong to other projects. "
             "SEEING: for anything with a screen (web pages, games, UIs) you can really look at it: after you build it, and before and after you fix a visual or runtime bug, "
@@ -1076,7 +1077,8 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
     if not t["model"]:
         raise LLMError(400, "No model name is set for the %s tier. Open Settings, Provider and models, and pick one." % t["name"])
     payload = {"model": t["model"], "messages": [{"role": "system", "content": system_prompt(cfg["workspace"], THREED_PROMPT if wants_3d(messages, cfg["workspace"]) else "")}] +
-               compact_for_context(clean_messages(messages, t["model"])), "tools": TOOLS}
+               compact_for_context(clean_messages(messages, t["model"])),
+               "tools": [x for x in TOOLS if not (getattr(run, "no_ask", False) and x["function"]["name"] == "ask_user")]}
     url = prov["base"].rstrip("/") + "/chat/completions"
     img, nov = getattr(run, "look_img", None), getattr(run, "no_vision", None)
     if nov is None:
@@ -1111,6 +1113,8 @@ def call_llm(run, cfg, pid, tiers, ti, messages):
 
 
 def tool_ask_user(run, a):
+    if getattr(run, "no_ask", False):
+        return "The user told you to decide everything yourself. Do not ask. Choose now, say your choice in one sentence, and build it."
     qs = []
     raw = a.get("questions")
     if not isinstance(raw, list):
@@ -1287,6 +1291,11 @@ def pool_models(pid, tiers):
     return ids[:8]
 
 
+DELEGATE_RE = re.compile(r"you\s+choo?se|choo?se\s+(it|the\s+\w+|everything|all)?\s*(by\s*)?(you|yo)\w*self|your\s+choice|up\s+to\s+you|surpri[sz]e|whatever\s+you\s+(want|like)|"
+                         r"you\s+decide|decide\s+(it\s+)?(by\s*)?(you|yo)\w*self|do\s+what\s+you\s+(want|like)|i\s+don.?t\s+care|pick\s+(it\s+)?(by\s*)?(you|yo)\w*self|the\s+best\s+(website|site|game|app)\s+(you|that\s+you)", re.I)
+DELEGATE_HINT = ("\n\n[aqua auto-prompt: the user left EVERY choice to you. Do NOT call ask_user and do not ask any question. Decide now: pick ONE specific, original, ambitious idea, state it in one sentence, "
+                 "then build it fully. Choose a FRESH subject: do not reuse an idea from earlier projects, and do not make slime, jelly or liquid things unless the user asked for them. Aim for the best result you can make: a polished look, smooth animations, many interactive details, small surprises and easter eggs, responsive on phones, no placeholder text. "
+                 "If React was asked for: ONE index.html with React 18.3.1 and ReactDOM UMD from cdnjs plus htm for templates (no build step), components and state, not a static page.]")
 COMPLEX_RE = re.compile(r"shader|glsl|webgl|three\.?js|3d|physics|raymarch|simulation|multiplayer|procedural|pathfind|particle|voxel|fluid|ray.?trac|game engine|ai opponent|machine learning|neural", re.I)
 COMPLAINT_RE = re.compile(r"doesn.?t work|does not work|not working|still|again|broken|black|blank|nothing|empty|error|bug|crash|fix|wrong|can.?t see|cannot see|no \w+ (?:shows|appears)|i see no|why", re.I)
 
@@ -1307,8 +1316,22 @@ def followup_hint(text, first):
 
 BRIEF_SYSTEM = ("You turn a messy, typo-filled request from a non-expert into a clear build brief for a coding AI. Read it charitably, guess what the person REALLY wants, and fix typos. "
                "Never ask questions. Write at most 170 words, plain text, in this shape:\nGOAL: one sentence.\nLOOK AND FEEL: 2 sentences about what the user sees and does.\nFEATURES: 5 to 8 short bullet points (concrete, buildable).\nTECH: the simplest tech that works offline in the browser (usually ONE index.html with plain JavaScript/WebGL).\nDONE WHEN: 3 checks that prove it works.\nBUILD ORDER: 3 numbered stages (a minimal working core first, then features, then polish).\n"
-               "Technique hints: a realistic slime / jelly / liquid object = a fragment shader that ray-marches a signed-distance rounded shape with spring-wobble physics, Fresnel + refraction + subsurface glow + specular highlights, mouse poke/drag adds impulses; "
-               "a 3D scene = Three.js or raw WebGL; a game = a requestAnimationFrame loop, keyboard/mouse controls, score and restart; keep it small and polished rather than huge.")
+"KEEP THE SUBJECT the user asked for (a logo stays a logo, a website stays a website). Never swap it for another theme, and never add a theme the user did not ask for.\n")
+
+
+def brief_hints(text):
+    """Technique hints, only for the kind of thing the user really asked for (so no single theme leaks into every project)."""
+    t = text.lower()
+    h = []
+    if re.search(r"slime|jelly|\bgoo\b|squish|blob", t):
+        h.append("a realistic slime / jelly object = a fragment shader that ray-marches a signed-distance rounded shape with spring-wobble physics, Fresnel + refraction + subsurface glow + specular highlights, mouse poke/drag adds impulses")
+    if re.search(r"3d|three\.?js|webgl|shader", t):
+        h.append("a 3D scene = Three.js or raw WebGL with lights, shadows and orbit or mouse control")
+    if re.search(r"game|play", t):
+        h.append("a game = a requestAnimationFrame loop, keyboard/mouse controls, score and restart")
+    if re.search(r"web\s*-?site|web\s*page|landing|react|portfolio|brand|store|shop", t):
+        h.append("a website = one polished index.html: hero, several sections, smooth scroll and reveal animations, real interactive parts (not a static page), responsive on phones; if React is wanted: React 18.3.1 + ReactDOM UMD from cdnjs and htm for templates, no build step")
+    return ("Technique hints (use only what fits): " + "; ".join(h) + ". Keep it polished rather than huge.") if h else "Keep it polished rather than huge."
 
 
 def make_brief(run, cfg, pid, tiers, top, text):
@@ -1322,7 +1345,7 @@ def make_brief(run, cfg, pid, tiers, top, text):
         try:
             wait_limits(run, cfg, pid, tiers, i)
             j = http_json(prov["base"].rstrip("/") + "/chat/completions", auth_key(prov),
-                          {"model": t["model"], "messages": [{"role": "system", "content": BRIEF_SYSTEM}, {"role": "user", "content": text[:3000]}], "max_tokens": 700}, timeout=90)
+                          {"model": t["model"], "messages": [{"role": "system", "content": BRIEF_SYSTEM + brief_hints(text)}, {"role": "user", "content": text[:3000]}], "max_tokens": 700}, timeout=90)
             out = ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
             u = j.get("usage") or {}
             record_usage(pid, tiers, i, int(u.get("prompt_tokens") or 0), 0, int(u.get("completion_tokens") or 0), bool(prov.get("free")))
@@ -1408,11 +1431,15 @@ def agent_loop(run, user_text, forced_tier):
 
     messages = sess["messages"]
     first_msg = not messages
+    delegated = bool(DELEGATE_RE.search(user_text)) or bool(sess.get("no_ask"))
+    if delegated:
+        sess["no_ask"] = True                             # once you say "you choose", Aqua never asks you in this chat
+    run.no_ask = delegated
     brief, bmodel = None, None
     if cfg.get("understand_first", True) and first_msg and len(user_text.strip()) >= 12 and not run.stop:
         run.emit("status", persist=False, text="Understanding your request first (%s)" % plabel)
-        brief, bmodel = make_brief(run, cfg, pid, tiers, top, user_text)
-    messages.append({"role": "user", "content": user_text + (("\n\n[aqua brief: a clean reading of the request above, written by a stronger model. Build exactly this, and ignore typos in the original]\n" + brief) if brief else "") + followup_hint(user_text, first_msg)})
+        brief, bmodel = make_brief(run, cfg, pid, tiers, top, user_text + ("\n(The user left every choice to you: invent one specific, original, ambitious concept yourself.)" if delegated else ""))
+    messages.append({"role": "user", "content": user_text + (("\n\n[aqua brief: a clean reading of the request above, written by a stronger model. Build exactly this, and ignore typos in the original]\n" + brief) if brief else "") + (DELEGATE_HINT if delegated and first_msg else "") + followup_hint(user_text, first_msg)})
     if forced_tier is None and first_msg and not sess.get("tier") and ti < 1 and top >= 1 and COMPLEX_RE.search(user_text + " " + (brief or "")):
         ti = 1                                            # shaders, 3D, physics and games are too hard for the smallest model: start one tier up
     run.emit("user", text=user_text)
@@ -2789,7 +2816,7 @@ def _headless(exe, url, extra, timeout=60, size="1200,900", errs=False, budget=2
 
 ASSETS_RECIPES = os.path.join(ROOT, "assets", "recipes")
 RECIPES = {
-    "shader-jelly": ("shader-jelly.html", "Full-screen WebGL ray-marched wobbling jelly / slime cube: spring wobble, refraction, subsurface glow, mouse squish, Space shockwave. No libraries. For slime, jelly, liquid, glass, blob and shader games."),
+    "shader-jelly": ("shader-jelly.html", "ONLY when the user explicitly asks for slime, jelly, goo or a squishy blob: a WebGL ray-marched wobbling jelly cube with spring wobble, refraction, subsurface glow and mouse squish. Not for logos, websites, cars, RPGs or anything else."),
     "three-scene": ("three-scene.html", "Three.js scene (offline three.js r160): lights, shadows, orbit controls, animated knot, spheres, floor. For any 3D scene, model viewer or 3D game base. Copies the 3d/ folder too."),
     "canvas-game": ("canvas-game.html", "2D canvas action game: player, auto-fire, enemies, difficulty ramp, score, best score, game over, restart, keyboard + mouse + touch. For any arcade game."),
 }
