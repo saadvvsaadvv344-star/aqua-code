@@ -223,3 +223,17 @@ Press **One key for everything** in the AI menu. Aqua gives you one address (`ht
 ## Models in use
 
 **Models in use** (AI menu) lists every model Aqua can use with a connected key and what it does with each one: **In use** (your ladder), **Backup** (tried automatically when the ladder is limited), **Limited** (with the time it comes back), **No credit** (the service refused it for lack of money, so it is skipped for an hour and nothing is charged) and, for OpenRouter, **Free, unused**. **Add to ladder** puts a backup model in the ladder (six at most). For OpenRouter the automatic backups are all of its free models that can use tools (about ten at the moment), never the paid ones.
+
+## Sync: the same projects on your PC, your Mac and a private website
+
+Press **Sync my projects** in the AI menu. It keeps your project folders, chats and settings identical on every computer you link (PC, Mac), and feeds a private website where you sign in with your Google account and download everything (each project as a ZIP, or one ZIP with all projects and chats).
+
+* **Free and yours.** It uses your own free Firebase project (Firestore on the free plan, no card, no Cloud Storage). Nothing is stored anywhere else.
+* **One-time setup:** `python tools/deploy_sync_site.py` only looks; add `--yes` to do the missing steps (enable Firestore, create the Hosting site `aqua-code-saad`, allow it for Google sign-in, publish the site and the rules). It uses the Firebase tool you are already signed in with, and never touches your other sites.
+* **Link a computer:** AI menu, Sync my projects, Link this computer. Aqua opens the site in Google Chrome, you press Continue with Google, then one button. Aqua gets a sign-in token for your own project (never your password). Do the same on the Mac.
+* **Only your account.** The Firestore rules let only the Google account that deployed the site read or write. Everyone else is refused.
+* **What syncs:** project files up to 8 MB (not `node_modules`, `.git`, caches), your chats, your settings. A removed file goes to `data/sync_trash`; if two computers changed the same file, the newer one wins and the other copy is kept next to it. A missing drive or emptied folder never deletes the cloud copy.
+* **API keys** stay on the computer unless you set a sync passphrase. Then they are encrypted on the computer (scrypt and HMAC, standard library only) before they leave, the website can never show them, and a computer that joins keeps its own keys and shares them.
+* **Limits (free plan):** about 20,000 writes and 50,000 reads a day, 1 GB stored. Aqua uploads at most 40 changes per round, so it never runs out.
+* **Safe for Windows Defender and macOS:** no installer, no extra program, no startup entry, no script download. It is the same Python code as Aqua, talking HTTPS to Google (`firestore.googleapis.com`, `securetoken.googleapis.com`) and nothing else. It only runs while Aqua Code is open. If a security program ever complains, look at Windows Security, Protection history, and allow Aqua's folder there. Do not turn protection off.
+* **Test it:** `python tools/sync_selftest.py` simulates a PC and a Mac against a fake Firestore (30 checks).

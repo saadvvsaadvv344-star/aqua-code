@@ -1115,6 +1115,44 @@ function openWelcome(prefer){
   w.classList.add('show');draw();
 }
 
+/* ---------- Aqua Sync: the same projects, chats and settings on every computer, through your own Google account ---------- */
+const syncApi=async(act,body)=>{try{const r=await fetch('/api/sync/'+act,{method:'POST',headers:{'Content-Type':'application/json','X-Aqua-UI':'1'},body:JSON.stringify(body||{})});return await r.json()}catch(e){return{ok:false,error:String(e)}}};
+async function openSync(){
+  const {box,closeW}=keyWin();
+  let linking=false;
+  const ago=t=>{if(!t)return 'not yet';const s=Math.max(0,Math.round(Date.now()/1000-t));return s<5?'just now':s<90?s+' s ago':Math.round(s/60)+' min ago'};
+  const draw=async()=>{
+    const s=await syncApi('status');
+    const i=s.info||{};
+    box.innerHTML=`<div id="sy_root" style="padding:26px 30px 4px;text-align:center;position:relative"><button class="btn pill ic" id="sy_x" title="Close" aria-label="Close" style="position:absolute;right:18px;top:18px">${ic('x')}</button><div class="logo" style="width:60px;height:60px;margin:0 auto 12px"><svg class="i"><use href="#i-logo"/></svg></div>
+      <h2 style="font-size:24px;letter-spacing:-.3px">Sync with my Google account</h2><p class="mut" style="margin-top:6px">Your projects, chats and settings stay identical on every computer you link (PC, Mac). It also feeds your private website, where you sign in with Google and download everything.</p></div>
+      <div class="modal-b" style="padding-top:12px">${!s.available?'<div class="guide"><b>The sync module is missing</b><p>Update Aqua Code to the latest version.</p></div>':!s.linked?`
+        <div class="guide" style="margin:0"><b>Step 1: link this computer</b><p style="margin-top:4px">Aqua opens your private website in Google Chrome. Sign in with your Google account there. Aqua only receives a sign-in token for your own Firebase project, never your password.</p></div>
+        <div><button class="btn gold" id="sy_link">${ic('key')}Link this computer</button></div>
+        <div id="sy_msg" style="font-size:13px;color:var(--mut);min-height:20px">${linking?'Waiting for you to sign in with Google in Chrome... this window updates by itself.':''}</div>`:`
+        <div style="padding:12px 16px;border-radius:14px;background:rgba(60,180,120,.12)"><b style="color:var(--green)">Linked</b> as <b>${esc(s.email||'your Google account')}</b> on <b>${esc((s.device||{}).name||'this computer')}</b> (${esc((s.device||{}).os||'')})${s.paused?' <span class="chip" style="color:var(--amber)"><i></i>paused</span>':''}</div>
+        <div style="font-size:13.5px;line-height:1.7">Last sync: <b>${ago(i.last_ok)}</b> &nbsp; Sent: <b>${i.up||0}</b> &nbsp; Received: <b>${i.down||0}</b> &nbsp; Files: <b>${s.files}</b> &nbsp; Chats: <b>${s.chats}</b>${i.conflicts?` &nbsp; Conflicts kept: <b>${i.conflicts}</b>`:''}</div>
+        ${i.last_error?`<div style="padding:10px 14px;border-radius:12px;background:rgba(220,80,80,.1);color:var(--red);font-size:13px">${esc(i.last_error)}</div>`:''}
+        ${i.warn?`<div style="padding:10px 14px;border-radius:12px;background:rgba(255,180,84,.14);color:var(--amber);font-size:13px">${esc(i.warn)}</div>`:''}
+        <div><button class="btn gold" id="sy_now">${ic('refresh')}Sync now</button> <button class="btn ghost" id="sy_pause">${s.paused?'Resume':'Pause'}</button> <button class="btn ghost" id="sy_site">Open my website</button> <button class="btn ghost" id="sy_unlink">Unlink</button></div>
+        <div class="guide" style="margin:0"><b>My API keys</b><p style="margin-top:4px">${s.keys_sync?'Keys are synced, encrypted with your passphrase. Use the same passphrase on every computer. The website can never show them.':'Off: your keys stay on this computer. To share them, choose a passphrase (8 or more characters), and use the same one on every computer. Keys are encrypted here before they leave; without the passphrase nobody can read them.'}</p>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input id="sy_pw" type="password" autocomplete="off" placeholder="${s.keys_sync?'Change the passphrase':'Sync passphrase'}" style="flex:1;min-width:200px;padding:9px 12px;border-radius:12px;border:1px solid var(--gb2);background:rgba(255,255,255,.55);color:inherit;font:inherit"><button class="btn ghost" id="sy_pwgo">${s.keys_sync?'Save':'Sync my keys'}</button>${s.keys_sync?'<button class="btn ghost" id="sy_pwoff">Stop syncing keys</button>':''}</div></div>
+        <div class="guide" style="margin:0"><b>What is synced</b><p style="margin-top:4px">Every project folder (files up to 8 MB; node_modules, .git and caches are skipped), your chats and your settings. Removed files go to <span class="mono">data/sync_trash</span>, and if two computers change the same file, the newer one wins and the other is kept next to it. Only runs while Aqua Code is open.</p></div>`}</div>
+      <div class="modal-f"><button class="btn gold" id="sy_done">Done</button></div>`;
+    $('#sy_x').onclick=closeW;$('#sy_done').onclick=closeW;
+    const L=$('#sy_link');if(L)L.onclick=async()=>{L.classList.add('busy');const r=await syncApi('link-start');L.classList.remove('busy');if(!r.ok){toast(r.error||'Could not open the website');return}linking=true;draw()};
+    const act=(id,name,body,msg)=>{const b=$(id);if(b)b.onclick=async()=>{const r=await syncApi(name,body&&body());if(r.ok===false){toast(r.error||'Did not work');return}if(msg)toast(msg);draw()}};
+    act('#sy_now','now',null,'Syncing...');act('#sy_pause','pause',()=>({paused:!s.paused}));
+    act('#sy_unlink','unlink',null,'Unlinked. Your files stay where they are.');
+    act('#sy_pwoff','passphrase',()=>({passphrase:''}),'Keys are no longer synced from this computer.');
+    const pg=$('#sy_pwgo');if(pg)pg.onclick=async()=>{const v=$('#sy_pw').value;if(!v){toast('Type a passphrase first');return}const r=await syncApi('passphrase',{passphrase:v});if(r.ok===false){toast(r.error);return}toast('Keys will be synced, encrypted');draw()};
+    const sb=$('#sy_site');if(sb)sb.onclick=()=>fetch('/api/open-url',{method:'POST',headers:{'Content-Type':'application/json','X-Aqua-UI':'1'},body:JSON.stringify({url:s.site})});
+    if(s.linked)linking=false;
+  };
+  await draw();
+  const tm=setInterval(()=>{if(!$('#sy_root')||!$('#welcome').classList.contains('show')){clearInterval(tm);return}if(document.activeElement&&document.activeElement.id==='sy_pw')return;draw()},3000);
+}
+
 /* ---------- test every saved key for real and say what is wrong ---------- */
 async function openKeyTest(){
   const {box,closeW}=keyWin();
@@ -1324,7 +1362,7 @@ function drawAiMenu(){
   const m=$('#aiMenu');
   const ents=Object.entries(S.cfg.providers).sort((a,b)=>(a[1].group?1:0)-(b[1].group?1:0));let lastG='';
   m.innerHTML=`<div class="aihead">All AI providers (${ents.filter(e=>e[1].has_key).length} connected of ${ents.length})</div>`+ents.map(([k,v])=>{const g=v.group||'Main providers';const hd=g!==lastG?(lastG=g,`<div class="aihead" style="padding-top:12px;color:var(--mut)">${esc(g)}</div>`):'';return hd+`<button class="airow ${k===S.cfg.provider?'on':''}" data-k="${k}"><i class="kd ${v.has_key?'ok':''}"></i><span class="aitx"><b>${esc(v.label)}</b><em>${v.tiers.map(t=>esc(t.model||'(no model)')).join('  /  ')}</em></span><span class="aist ${v.has_key?'ok':''}">${k===S.cfg.provider?'In use':v.has_key?'Connected':v.nokey?'Enable':'Needs key'}</span></button>`}).join('')
-    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiGate">${ic('bolt')}One key for everything</button><button class="btn ghost" id="aiChk">${ic('check')}Get free keys</button><button class="btn ghost" id="aiMods">${ic('layers')}Models in use</button><button class="btn ghost" id="aiTest">${ic('check')}Test my keys</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
+    +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiGate">${ic('bolt')}One key for everything</button><button class="btn ghost" id="aiChk">${ic('check')}Get free keys</button><button class="btn ghost" id="aiMods">${ic('layers')}Models in use</button><button class="btn ghost" id="aiTest">${ic('check')}Test my keys</button><button class="btn ghost" id="aiSync">${ic('refresh')}Sync my projects</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
   m.querySelectorAll('.airow').forEach(b=>b.onclick=async()=>{
     const k=b.dataset.k,v=S.cfg.providers[k];m.hidden=true;
     if(!v.has_key){openWelcome(k);return}
@@ -1333,7 +1371,7 @@ function drawAiMenu(){
     const r=await api('/api/config',{provider:k});if(!r.config){toast(r.error||'Could not switch');return}
     S.cfg=r.config;S.forced='auto';S.cur=null;render();if(!S.sid)showHero();toast('Now talking with '+v.label);
   });
-  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openPasteKeys()};$('#aiGate').onclick=()=>{m.hidden=true;openGateway()};$('#aiChk').onclick=()=>{m.hidden=true;openKeyChecklist()};$('#aiMods').onclick=()=>{m.hidden=true;openModelStatus()};$('#aiTest').onclick=()=>{m.hidden=true;openKeyTest()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
+  $('#aiAdd').onclick=()=>{m.hidden=true;openWelcome()};$('#aiMulti').onclick=()=>{m.hidden=true;openPasteKeys()};$('#aiGate').onclick=()=>{m.hidden=true;openGateway()};$('#aiChk').onclick=()=>{m.hidden=true;openKeyChecklist()};$('#aiMods').onclick=()=>{m.hidden=true;openModelStatus()};$('#aiTest').onclick=()=>{m.hidden=true;openKeyTest()};$('#aiSync').onclick=()=>{m.hidden=true;openSync()};$('#aiKeys').onclick=()=>{m.hidden=true;openSettings()};
 }
 document.addEventListener('click',e=>{const m=$('#aiMenu');if(m&&!m.hidden&&!e.target.closest('#aiMenu'))m.hidden=true});
 

@@ -3173,6 +3173,192 @@ def open_in_chrome(url):
     return {"ok": True, "browser": "default"}
 
 
+# --------------------------------------------------------------------------- Aqua Sync: the same projects, chats and settings on every computer you link
+try:
+    import sync as aqua_sync
+except Exception:                                        # the optional module is missing or broken: everything else keeps working
+    aqua_sync = None
+
+SYNC_SESSION = os.path.join(DATA, "sync_session.json")
+SYNC_SITE = "https://aqua-code-saad.web.app/"
+SYNC = {"syncer": None, "info": {}, "link": None, "wake": threading.Event()}
+SYNC_SETTING_KEYS = ("provider", "level", "approval", "auto_escalate", "sticky_tier", "failover", "failover_paid", "no_key_fallback", "pool_models",
+                     "understand_first", "review_gate", "start_tier", "max_tier", "esc_errors", "esc_steps", "max_steps", "daily_budget", "total_budget")
+
+
+def _sync_load():
+    return _read_json(SYNC_SESSION, {})
+
+
+def _sync_save(d):
+    _write_json(SYNC_SESSION, d)
+
+
+def sync_site_origin():
+    u = urlparse(load_cfg().get("sync_site") or SYNC_SITE)
+    return "%s://%s" % (u.scheme, u.netloc)
+
+
+def sync_roots():
+    """{project name: folder} of every project on this computer. Names are what the other computers see."""
+    out, seen = {}, set()
+    for p in list_projects():
+        try:
+            rp = os.path.normcase(os.path.realpath(p["path"]))
+            if rp == os.path.normcase(os.path.realpath(ROOT)) or rp in seen:
+                continue
+            seen.add(rp)
+            nm = aqua_sync.clean_project(p["name"])
+            base, i = nm, 2
+            while nm in out:
+                nm = "%s (%d)" % (base, i)
+                i += 1
+            out[nm] = p["path"]
+        except Exception:
+            continue
+    return out
+
+
+class _SyncChats:
+    def ids(self):
+        with _lock:
+            return list(sessions.keys())
+
+    def get(self, sid):
+        with _lock:
+            s = sessions.get(sid)
+            if s is None:
+                return None
+            return {k: v for k, v in s.items() if k not in ("workspace", "id")}
+
+    def fingerprint(self, sid):
+        with _lock:
+            s = sessions.get(sid) or {}
+            return "%d:%d:%s:%s" % (len(s.get("messages") or []), len(s.get("events") or []), s.get("title", ""), s.get("cost", 0))
+
+    def busy(self, sid):
+        return any(r.sess.get("id") == sid and not r.done for r in list(runs.values()))
+
+    def project_of(self, sid):
+        with _lock:
+            ws = (sessions.get(sid) or {}).get("workspace")
+        for nm, path in sync_roots().items():
+            if ws and ws_key(path) == ws:
+                return nm
+        return ""
+
+    def put(self, sid, obj, project):
+        roots = sync_roots()
+        ws = ws_key(roots[project]) if project in roots else ws_key(load_cfg()["workspace"])
+        s = dict(obj)
+        s.update({"id": sid, "workspace": ws})
+        s.setdefault("messages", [])
+        s.setdefault("events", [])
+        s.setdefault("created", time.time())
+        with _lock:
+            sessions[sid] = s
+        save_sessions()
+
+    def remove(self, sid):
+        with _lock:
+            sessions.pop(sid, None)
+        save_sessions()
+
+
+class _SyncSettings:
+    def get_settings(self):
+        cfg = load_cfg()
+        d = {k: cfg[k] for k in SYNC_SETTING_KEYS if k in cfg}
+        d["providers"] = {pid: {"tiers": v.get("tiers", []), "base": v.get("base", ""), "free": bool(v.get("free"))} for pid, v in cfg["providers"].items()}
+        return d
+
+    def put_settings(self, d):
+        apply_config_update(d)
+
+    def get_keys(self):
+        return {pid: v["key"] for pid, v in load_cfg()["providers"].items() if v.get("key")}
+
+    def put_keys(self, d, merge=False):
+        with _lock:
+            cfg = load_cfg()
+            for pid, v in cfg["providers"].items():
+                if pid in d and d[pid]:
+                    v["key"] = d[pid]
+                elif not merge and pid not in d and v.get("key"):
+                    v["key"] = ""
+            save_cfg(cfg)
+
+
+def sync_build(sess):
+    fake = os.environ.get("AQUA_SYNC_FAKE", "")            # tests only: talk to a local fake Firestore instead of Google
+    fs = aqua_sync.Firestore(sess["projectId"], sess["apiKey"], sess["refreshToken"],
+                             on_token=lambda t: _sync_save(dict(_sync_load(), refreshToken=t)),
+                             base=(fake + "/v1") if fake else None, token_url=(fake + "/token") if fake else None)
+    return aqua_sync.Syncer(DATA, fs, aqua_sync.device_info(DATA), sync_roots, PROJECTS_ROOT, chats=_SyncChats(), settings=_SyncSettings(),
+                            passphrase=lambda: _sync_load().get("passphrase", ""))
+
+
+def sync_loop():
+    while True:
+        wait = 5
+        try:
+            sess = _sync_load()
+            if aqua_sync and sess.get("refreshToken") and not sess.get("paused"):
+                if SYNC.get("syncer") is None:
+                    SYNC["syncer"] = sync_build(sess)
+                SYNC["info"] = SYNC["syncer"].cycle()
+                wait = 60 if SYNC["info"].get("last_error") else 15
+        except Exception as e:
+            SYNC["info"] = {"last_error": str(e)[:200]}
+            wait = 60
+        SYNC["wake"].wait(wait)
+        SYNC["wake"].clear()
+
+
+def sync_start():
+    if aqua_sync is None or any(t.name == "aqua-sync" and t.is_alive() for t in threading.enumerate()):
+        return
+    threading.Thread(target=sync_loop, name="aqua-sync", daemon=True).start()
+
+
+def sync_status():
+    sess = _sync_load()
+    s = SYNC.get("syncer")
+    dev = aqua_sync.device_info(DATA) if aqua_sync else {}
+    return {"available": aqua_sync is not None, "linked": bool(sess.get("refreshToken")), "email": sess.get("email", ""), "paused": bool(sess.get("paused")),
+            "keys_sync": bool(sess.get("passphrase")), "site": load_cfg().get("sync_site") or SYNC_SITE, "device": dev, "info": SYNC.get("info") or {},
+            "files": len([1 for v in (s.st["files"].values() if s else []) if not v.get("deleted")]),
+            "chats": len([1 for v in (s.st["chats"].values() if s else []) if not v.get("deleted")])}
+
+
+def sync_link_start():
+    import secrets
+    code = secrets.token_urlsafe(9)
+    SYNC["link"] = {"code": code, "until": time.time() + 600}
+    url = "%s#link=%d.%s" % (load_cfg().get("sync_site") or SYNC_SITE, PORT, code)
+    return url, open_in_chrome(url)
+
+
+def sync_link_finish(b, origin):
+    import hmac
+    ln = SYNC.get("link")
+    if not ln or time.time() > ln["until"]:
+        return {"ok": False, "error": "The link request expired. Press Link this computer again in Aqua Code."}
+    if origin and origin != sync_site_origin():
+        return {"ok": False, "error": "Wrong website."}
+    if not hmac.compare_digest(str(b.get("code", "")).encode(), ln["code"].encode()):
+        return {"ok": False, "error": "Wrong code."}
+    pid, key, tok = str(b.get("projectId", "")), str(b.get("apiKey", "")), str(b.get("refreshToken", ""))
+    if not re.fullmatch(r"[a-z0-9-]{4,40}", pid) or not key or not tok:
+        return {"ok": False, "error": "Incomplete sign-in data."}
+    old = _sync_load()
+    _sync_save({"projectId": pid, "apiKey": key, "refreshToken": tok, "email": str(b.get("email", ""))[:120], "uid": str(b.get("uid", ""))[:60],
+                "passphrase": old.get("passphrase", ""), "paused": False})
+    SYNC["link"], SYNC["syncer"] = None, None
+    SYNC["wake"].set()
+    return {"ok": True}
+
+
 # --------------------------------------------------------------------------- gateway: ONE key for all of your own keys
 def gateway_key(cfg=None):
     cfg = cfg or load_cfg()
@@ -3398,6 +3584,7 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "authorization, content-type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Private-Network", "true")        # an https page may talk to this computer (the sign-in link step)
         for k, v in (extra or {}).items():
             self.send_header(k, v)
 
@@ -3623,6 +3810,32 @@ class H(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, "config": masked_cfg(load_cfg())})
                 except ValueError as e:
                     return self._send(200, {"ok": False, "error": str(e)})
+            if u.path == "/api/sync/link":                          # the website hands this computer its sign-in: needs the one-time code from the app
+                return self._gw_send(200, sync_link_finish(b, self.headers.get("Origin")))
+            if u.path.startswith("/api/sync/"):
+                act = u.path.rsplit("/", 1)[-1]
+                if self.headers.get("X-Aqua-UI") != "1":
+                    return self._send(403, {"ok": False, "error": "Not allowed."})
+                if aqua_sync is None:
+                    return self._send(200, {"ok": False, "error": "The sync module is missing."})
+                if act == "link-start":
+                    url, r = sync_link_start()
+                    return self._send(200, {"ok": True, "url": url, "browser": r.get("browser")})
+                if act == "now":
+                    SYNC["wake"].set()
+                elif act == "pause":
+                    _sync_save(dict(_sync_load(), paused=bool(b.get("paused"))))
+                    SYNC["wake"].set()
+                elif act == "unlink":
+                    _sync_save({})
+                    SYNC["syncer"] = None
+                elif act == "passphrase":
+                    pw = str(b.get("passphrase") or "")
+                    if pw and len(pw) < 8:
+                        return self._send(200, {"ok": False, "error": "Use at least 8 characters."})
+                    _sync_save(dict(_sync_load(), passphrase=pw))
+                    SYNC["wake"].set()
+                return self._send(200, dict(sync_status(), ok=True))
             if u.path == "/api/open-url":
                 if self.headers.get("X-Aqua-UI") != "1":           # a web page cannot send this header without our permission
                     return self._send(403, {"ok": False, "error": "Not allowed."})
@@ -3784,11 +3997,18 @@ except Exception:
     pass
 
 
+try:
+    sync_start()                       # idle until you link a computer; a hot reload of this file starts it too
+except Exception:
+    pass
+
+
 if __name__ == "__main__":
     load_cfg()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     srv.daemon_threads = True
     start_preview_server()
+    sync_start()
     print("Aqua Code running at http://127.0.0.1:%d  (Ctrl+C to stop)" % PORT)
     try:
         srv.serve_forever()

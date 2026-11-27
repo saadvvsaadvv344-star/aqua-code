@@ -22,3 +22,6 @@ video/howitworks/*.mp4
 
 # local only: the fast key rally helper (never uploaded)
 assets/local_rally.js
+
+# written at deploy time from your own Firebase project
+sync_site/public/config.js

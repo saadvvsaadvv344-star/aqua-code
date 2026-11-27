@@ -95,9 +95,15 @@ def hot_reload(srv):
     keep = (dict(server.SERVERS), server.PREVIEW_PORT, server.LAST_PING)
     srv.shutdown()
     srv.server_close()
+    try:
+        import sync as _sync
+        importlib.reload(_sync)                    # the sync engine is a separate file: pick up its changes too
+    except Exception as e:
+        log("sync.py could not be reloaded:", repr(e))
     importlib.reload(server)
     server.SERVERS.update(keep[0])
     server.PREVIEW_PORT, server.LAST_PING = keep[1], keep[2]
+    server.sync_start()
     new = server.ThreadingHTTPServer(("127.0.0.1", PORT), server.H)
     new.daemon_threads = True
     threading.Thread(target=new.serve_forever, daemon=True).start()
@@ -148,6 +154,7 @@ def main():
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     server.start_preview_server()
+    server.sync_start()
     log("server up", URL)
     server.LAST_PING = time.time()
     t_start = time.time()

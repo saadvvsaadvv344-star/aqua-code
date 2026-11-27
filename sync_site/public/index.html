@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Aqua Code - my projects</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#0b0d12">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23161a22'/%3E%3Cpath d='M32 10c8 12 14 19 14 28a14 14 0 0 1-28 0c0-9 6-16 14-28z' fill='%238fd3e3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div id="bg" aria-hidden="true"></div>
+  <main>
+    <header class="top">
+      <div class="brand"><span class="drop"></span><div><b>Aqua Code</b><small>my private projects</small></div></div>
+      <div id="who" class="who" hidden><span id="who-mail"></span><button id="signout" class="btn ghost">Sign out</button></div>
+    </header>
+
+    <section id="loading" class="card center"><p id="loading-msg">Loading...</p></section>
+
+    <section id="signin" class="card center" hidden>
+      <h1>Sign in with Google</h1>
+      <p>This site is private. Only the Google account that owns it can open it. Your projects, chats and settings from Aqua Code on your PC and your Mac are here, and you can download all of them.</p>
+      <button id="signin-btn" class="btn gold big">Continue with Google</button>
+      <p id="signin-err" class="err"></p>
+    </section>
+
+    <section id="denied" class="card center" hidden>
+      <h1>This account cannot open this site</h1>
+      <p>You are signed in as <b id="denied-mail"></b>, but only the owner's Google account is allowed. Sign out and use the right account.</p>
+      <button id="denied-out" class="btn gold">Sign out</button>
+    </section>
+
+    <section id="linkcard" class="card" hidden>
+      <h2>Link this computer?</h2>
+      <p>Aqua Code on this computer asked to link to your account. It gets a sign-in token for your own Firebase project, never your Google password. Only press the button if you just pressed <b>Link this computer</b> in Aqua Code.</p>
+      <button id="link-btn" class="btn gold big">Yes, link this computer</button>
+      <p id="link-msg" class="msg"></p>
+    </section>
+
+    <section id="app" hidden>
+      <div class="card summary">
+        <div class="stats">
+          <div><b id="st-projects">0</b><span>projects</span></div>
+          <div><b id="st-files">0</b><span>files</span></div>
+          <div><b id="st-size">0</b><span>total size</span></div>
+          <div><b id="st-chats">0</b><span>chats</span></div>
+        </div>
+        <div class="actions">
+          <button id="all-zip" class="btn gold">Download everything (ZIP)</button>
+          <button id="refresh" class="btn ghost">Refresh</button>
+        </div>
+        <div id="progress" class="progress" hidden><span></span><small id="progress-msg"></small></div>
+        <p class="hint">Your API keys are not shown here: they are encrypted on your computers and only Aqua Code can open them. Reading all files costs Firestore reads from your free daily quota, so press Refresh only when you need it.</p>
+      </div>
+
+      <h2>Projects</h2>
+      <div id="projects" class="list"></div>
+
+      <h2>Latest changes</h2>
+      <div id="changes" class="card plain"></div>
+
+      <h2>Chats</h2>
+      <div id="chats" class="list"></div>
+
+      <h2>My computers</h2>
+      <div id="devices" class="card plain"></div>
+    </section>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

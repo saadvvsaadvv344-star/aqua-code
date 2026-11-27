@@ -1,0 +1,16 @@
+rules_version = '2';
+// Aqua Code sync: only the owner's Google account may read or write anything. Everything else is closed.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner() {
+      return request.auth != null
+        && request.auth.token.email == '__OWNER_EMAIL__'
+        && request.auth.token.email_verified == true;
+    }
+    match /aqua_files/{id}  { allow read, write: if owner(); }
+    match /aqua_chunks/{id} { allow read, write: if owner(); }
+    match /aqua_chats/{id}  { allow read, write: if owner(); }
+    match /aqua_meta/{id}   { allow read, write: if owner(); }
+    match /{document=**}    { allow read, write: if false; }
+  }
+}
