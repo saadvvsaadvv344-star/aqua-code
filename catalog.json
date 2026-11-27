@@ -442,7 +442,7 @@
     "kilo": {
       "label": "Kilo Code",
       "base": "https://api.kilo.ai/api/gateway",
-      "group": "No key needed (anonymous)",
+      "group": "Others (no key needed)",
       "nokey": true,
       "tiers": [
         {
@@ -471,7 +471,7 @@
     "llm7": {
       "label": "LLM7.io",
       "base": "https://api.llm7.io/v1",
-      "group": "No key needed (anonymous)",
+      "group": "Others (no key needed)",
       "nokey": true,
       "tiers": [
         {
@@ -495,7 +495,7 @@
     "ovh": {
       "label": "OVHcloud AI",
       "base": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-      "group": "No key needed (anonymous)",
+      "group": "Others (no key needed)",
       "nokey": true,
       "tiers": [
         {

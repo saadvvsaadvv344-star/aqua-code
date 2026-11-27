@@ -905,10 +905,13 @@ function openModelPop(){
   let pop=$('#modelPop');
   if(!pop){pop=document.createElement('div');pop.id='modelPop';pop.className='aimenu modelpop';pop.hidden=true;document.body.appendChild(pop)}
   if(!pop.hidden){closeModelPop();return}
-  const conn=Object.entries(S.cfg.providers).filter(([k,v])=>v.has_key),cur=S.cfg.provider,f=S.forced;
+  const conn=Object.entries(S.cfg.providers).filter(([k,v])=>v.has_key&&!v.nokey),oth=Object.entries(S.cfg.providers).filter(([k,v])=>v.nokey).sort((a,b)=>['kilo','ovh','llm7'].indexOf(a[0])-['kilo','ovh','llm7'].indexOf(b[0])),cur=S.cfg.provider,f=S.forced;
+  const rowH=(k,v)=>v.tiers.map((t,i)=>t.model?`<button class="airow ${(k===cur&&String(f)===String(i))?'on':''}" data-p="${esc(k)}" data-i="${i}"><i class="kd ok"></i><span class="aitx"><b>${esc(v.label)} ${esc(t.name)}</b><em>${esc(t.model)}</em></span>${(k===cur&&String(f)===String(i))?'<span class="aist ok">Selected</span>':'<span class="aist">No key</span>'}</button>`:'').join('');
   pop.innerHTML=`<div class="aihead">Which AI should work for you?</div>
     <button class="airow ${(f==='auto'||f==null)?'on':''}" data-a="auto"><i class="kd ok"></i><span class="aitx"><b>Auto (recommended)</b><em>Cheapest first, a stronger one when needed, and it switches by itself when one runs out</em></span>${(f==='auto'||f==null)?'<span class="aist ok">Selected</span>':''}</button>
-    ${conn.map(([k,v])=>`<div class="aihead" style="padding-top:12px;color:var(--mut)">${esc(v.label)}${k===cur?' &nbsp;in use':''}</div>${v.tiers.map((t,i)=>t.model?`<button class="airow ${(k===cur&&String(f)===String(i))?'on':''}" data-p="${esc(k)}" data-i="${i}"><i class="kd ok"></i><span class="aitx"><b>${esc(t.name)}</b><em>${esc(t.model)}</em></span>${(k===cur&&String(f)===String(i))?'<span class="aist ok">Selected</span>':''}</button>`:'').join('')}`).join('')||'<div class="mp-note">No AI is connected yet. Press Add a key.</div>'}
+    ${conn.map(([k,v])=>`<div class="aihead" style="padding-top:12px;color:var(--mut)">${esc(v.label)}${k===cur?' &nbsp;in use':''}</div>${v.tiers.map((t,i)=>t.model?`<button class="airow ${(k===cur&&String(f)===String(i))?'on':''}" data-p="${esc(k)}" data-i="${i}"><i class="kd ok"></i><span class="aitx"><b>${esc(t.name)}</b><em>${esc(t.model)}</em></span>${(k===cur&&String(f)===String(i))?'<span class="aist ok">Selected</span>':''}</button>`:'').join('')}`).join('')}
+    ${oth.length?`<div class="aihead" style="padding-top:12px;color:var(--mut)">Others (no key needed)</div><div class="mp-note">Free and no account. Shared and limited, and the service can see your prompts.</div>${oth.map(([k,v])=>rowH(k,v)).join('')}`:''}
+    ${!conn.length&&!oth.length?'<div class="mp-note">No AI is connected yet. Press Add a key.</div>':''}
     <div class="mp-f"><button class="btn ghost" id="mpAdd">${ic('plus')}Add a key</button><button class="btn ghost" id="mpAll">${ic('layers')}All models</button></div>`;
   const r=$('#modelBtn').getBoundingClientRect();
   pop.style.left=Math.max(8,Math.min(r.left,innerWidth-Math.min(400,innerWidth*.94)-8))+'px';
@@ -917,6 +920,9 @@ function openModelPop(){
   pop.querySelectorAll('.airow').forEach(row=>row.onclick=async()=>{
     if(row.dataset.a==='auto'){S.forced='auto';closeModelPop();renderChips();toast('Auto: Aqua chooses and switches by itself');return}
     const k=row.dataset.p,i=row.dataset.i,v=S.cfg.providers[k];
+    if(v.nokey&&!v.has_key){                                      /* a no-key AI from Others: switch it on first, no account needed */
+      const en=await api('/api/provider/enable',{id:k,on:true});if(!en.config){toast(en.error||'Could not switch it on');return}S.cfg=en.config;
+    }
     if(k!==S.cfg.provider){
       if(S.runId){toast('Wait for the running task to finish before changing the AI');return}
       const r2=await api('/api/config',{provider:k});if(!r2.config){toast(r2.error||'Could not switch');return}S.cfg=r2.config;S.cur=null;
@@ -1436,7 +1442,9 @@ function openMultiKey(){
 /* ---------- all AIs menu ---------- */
 function drawAiMenu(){
   const m=$('#aiMenu');
-  const ents=Object.entries(S.cfg.providers).sort((a,b)=>(a[1].group?1:0)-(b[1].group?1:0));let lastG='';
+  const gRank=g=>!g?0:/^Others/.test(g)?9:/Community/.test(g)?5:1;                      /* main providers, free tiers, community gateways, and last: Others (no key needed) */
+  const nkOrder=['kilo','ovh','llm7'],nkRank=k=>{const i=nkOrder.indexOf(k);return i<0?9:i};   /* the no-key AIs that work come first */
+  const ents=Object.entries(S.cfg.providers).sort((a,b)=>(gRank(a[1].group)*100+nkRank(a[0]))-(gRank(b[1].group)*100+nkRank(b[0])));let lastG='';
   m.innerHTML=`<div class="aihead">All AI providers (${ents.filter(e=>e[1].has_key).length} connected of ${ents.length})</div>`+ents.map(([k,v])=>{const g=v.group||'Main providers';const hd=g!==lastG?(lastG=g,`<div class="aihead" style="padding-top:12px;color:var(--mut)">${esc(g)}</div>`):'';return hd+`<button class="airow ${k===S.cfg.provider?'on':''}" data-k="${k}"><i class="kd ${v.has_key?'ok':''}"></i><span class="aitx"><b>${esc(v.label)}</b><em>${v.tiers.map(t=>esc(t.model||'(no model)')).join('  /  ')}</em></span><span class="aist ${v.has_key?'ok':''}">${k===S.cfg.provider?'In use':v.has_key?'Connected':v.nokey?'Enable':'Needs key'}</span></button>`}).join('')
     +`<div class="aifoot"><button class="btn ghost" id="aiAdd">${ic('plus')}Add provider</button><button class="btn ghost" id="aiMulti">${ic('key')}Add multi-model API key</button><button class="btn ghost" id="aiGate">${ic('bolt')}One key for everything</button><button class="btn ghost" id="aiChk">${ic('check')}Get free keys</button><button class="btn ghost" id="aiMods">${ic('layers')}Models in use</button><button class="btn ghost" id="aiTest">${ic('check')}Test my keys</button><button class="btn ghost" id="aiSync">${ic('refresh')}Sync my projects</button><button class="btn ghost" id="aiKeys">${ic('key')}Keys</button></div>`;
   m.querySelectorAll('.airow').forEach(b=>b.onclick=async()=>{
