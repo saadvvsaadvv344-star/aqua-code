@@ -2072,9 +2072,11 @@ def _probe(base, model, key):
             return "maybe"                                  # the key may be fine and only the model name is wrong
         if re.search(r"Expecting value|Extra data", m):
             return "no"
+        if e.status >= 500 or re.search(r"timed out|timeout", m, re.I):
+            return "maybe"                                  # a wrong key is refused at once; a slow or failing answer means the key got through
         return "unknown"
-    except Exception:
-        return "unknown"
+    except Exception as ex:
+        return "maybe" if re.search(r"timed out|timeout", str(ex), re.I) else "unknown"
 
 
 def probe_service(kind, ident, key):
@@ -2084,7 +2086,15 @@ def probe_service(kind, ident, key):
     else:
         p = cfg["providers"][ident]
         base = p["base"]
-        model = next((t["model"] for t in p["tiers"] if t.get("model")), GUESS_MODELS[0])
+        model = next((t["model"] for t in p["tiers"] if t.get("model")), None)
+        if not model and ident in FREE_SUFFIX_SERVICES:       # these gateways list their models to anyone: test with a real free one
+            try:
+                anon = http_json(base.rstrip("/") + "/models", "none", method="GET", timeout=12)
+                ids = [m["id"] for m in (anon.get("data") if isinstance(anon, dict) else anon) or [] if isinstance(m, dict) and m.get("id")]
+                model = next(iter(auto_pick_ids(ids)), None)
+            except Exception:
+                model = None
+        model = model or GUESS_MODELS[0]
     return _probe(base, model, key)
 
 
