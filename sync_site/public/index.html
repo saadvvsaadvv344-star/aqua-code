@@ -43,6 +43,17 @@
     </section>
 
     <section id="app" hidden>
+      <div id="empty" class="card" hidden>
+        <h2 style="margin-top:0">Nothing has arrived from your computers yet</h2>
+        <p>The site is working and you are signed in, but no computer has sent anything. That is why there is nothing to download. Do this once on each computer:</p>
+        <ol>
+          <li>Open <b>Aqua Code</b> on that computer.</li>
+          <li>Press the <b>AI</b> button, then <b>Sync my projects</b>.</li>
+          <li>Press <b>Link this computer</b>. Chrome opens this site: press <b>Continue with Google</b>, then <b>Yes, link this computer</b>.</li>
+          <li>Wait about a minute, then press <b>Check again</b> below.</li>
+        </ol>
+        <button id="empty-again" class="btn gold">Check again</button>
+      </div>
       <div class="card summary">
         <div class="stats">
           <div><b id="st-projects">0</b><span>projects</span></div>
@@ -54,6 +65,7 @@
           <button id="all-zip" class="btn gold">Download everything (ZIP)</button>
           <button id="refresh" class="btn ghost">Refresh</button>
         </div>
+        <p id="dlmsg" class="err" role="alert"></p>
         <div id="progress" class="progress" hidden><span></span><small id="progress-msg"></small></div>
         <p class="hint">Your API keys are not shown here: they are encrypted on your computers and only Aqua Code can open them. Reading all files costs Firestore reads from your free daily quota, so press Refresh only when you need it.</p>
       </div>

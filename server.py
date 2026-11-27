@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
     "understand_first": True,     # a stronger model first turns a messy request into a clear brief
     "pool_models": True,          # when every configured model is limited, also try other models of the same provider
     "level": "balanced",          # working level: low (gentle), balanced, high (full speed)
-    "no_key_fallback": True,      # when no API key is saved, use the free anonymous models that still work without one
+    "no_key_fallback": False,     # OFF: the anonymous model (LLM7) has a tiny token allowance and answers "add funds" to a real request; turn it on only for short chats
     "failover_paid": False,       # ...but only to FREE providers unless this is on (so it never spends money by surprise)
     "gateway": True,              # the one-key gateway at /v1 (see gateway_plan); needs the gateway key
     "gateway_key": "",            # created on first use, never sent to the page except by /api/gateway
@@ -1411,7 +1411,7 @@ def agent_loop(run, user_text, forced_tier):
     sess = run.sess
     cfg = load_cfg()
     notice = None
-    if cfg.get("no_key_fallback", True) and not any(has_access(v) for v in cfg["providers"].values()):
+    if cfg.get("no_key_fallback", False) and not any(has_access(v) for v in cfg["providers"].values()):
         first = nokey_enable()
         if first:
             cfg = load_cfg()

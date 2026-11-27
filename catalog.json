@@ -484,13 +484,13 @@
       "info": {
         "tag": "No key",
         "c": "var(--amber)",
-        "sub": "Only gpt-oss:20b works without a key.",
+        "sub": "No key, but a tiny allowance: short chat only.",
         "url": "",
         "steps": [
           "Nothing to sign up for.",
           "Press Enable below."
         ],
-        "note": "Checked on 2026-11-26: gpt-oss:20b answered and called a tool without a key. Other models there need a key. It is rate limited and anonymous, so your prompts are public: never send secrets."
+        "note": "Checked 2026-11-27: gpt-oss:20b answers a short message without a key, but a real Aqua request (several thousand tokens) gets 'Your free token allowance has been reached... add funds' on the first try. So it cannot build projects. Use it only for a quick chat, and get a free key (Gemini, OpenRouter, Groq) for real work. Anonymous: your prompts are public, never send secrets."
       }
     },
     "ovh": {

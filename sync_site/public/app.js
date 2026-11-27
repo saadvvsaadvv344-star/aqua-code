@@ -5,7 +5,8 @@ const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const CFG = window.AQUA_CFG || {};
 const $ = (id) => document.getElementById(id);
 const show = (...ids) => ['loading', 'signin', 'denied', 'linkcard', 'app'].forEach((x) => { $(x).hidden = !ids.includes(x); });
-const toast = (t) => { const e = $('toast'); e.textContent = t; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 3200); };
+const toast = (t) => { const e = $('toast'); e.textContent = t; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 6000); };
+const problem = (t) => { toast(t); const d = $('dlmsg'); if (d) d.textContent = t; };       // a download problem stays visible on the page, not only for a moment
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : n < 1073741824 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1073741824).toFixed(2) + ' GB';
 const ago = (ms) => { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' days ago'; };
@@ -92,6 +93,9 @@ function render() {
   const ps = projectsOf(), files = ps.reduce((n, p) => n + p.files.length, 0), size = ps.reduce((n, p) => n + p.size, 0);
   const chats = DATA.chats.filter((c) => !c.d);
   $('st-projects').textContent = ps.length; $('st-files').textContent = files; $('st-size').textContent = fmtSize(size); $('st-chats').textContent = chats.length;
+  const nothing = !ps.length && !chats.length;
+  $('empty').hidden = !nothing; $('all-zip').disabled = nothing; $('dlmsg').textContent = '';
+  $('empty-again').onclick = () => load();
   $('all-zip').onclick = () => zipDownload(ps, chats, 'aqua-code-everything.zip');
 
   const box = $('projects'); box.replaceChildren();
@@ -107,7 +111,7 @@ function render() {
       if (!list.hidden && !list.childElementCount) {
         for (const f of p.files.sort((a, b) => a.f.localeCompare(b.f))) {
           const r = el('div', 'file'), path = el('span', 'p', f.f), sm = el('small', '', fmtSize(f.s || 0) + ' - ' + ago(f.u || 0)), dl = el('button', 'btn ghost', 'Download');
-          dl.onclick = async () => { try { saveBlob(new Blob([await fileBytes(f)]), f.f.split('/').pop()); } catch (e) { toast(e.message); } };
+          dl.onclick = async () => { try { saveBlob(new Blob([await fileBytes(f)]), f.f.split('/').pop()); } catch (e) { problem(e.message || String(e)); } };
           r.append(path, sm, dl); list.append(r);
         }
       }
@@ -142,7 +146,7 @@ function render() {
         } catch (e) { msgs.append(el('div', '', e.message)); }
       }
     };
-    dl.onclick = async () => { try { saveBlob(new Blob([await fileBytes(c)], { type: 'application/json' }), (c.t || c.id).replace(/[^\w.-]+/g, '_') + '.json'); } catch (e) { toast(e.message); } };
+    dl.onclick = async () => { try { saveBlob(new Blob([await fileBytes(c)], { type: 'application/json' }), (c.t || c.id).replace(/[^\w.-]+/g, '_') + '.json'); } catch (e) { problem(e.message || String(e)); } };
     cb.append(it);
   }
 
@@ -183,7 +187,7 @@ function saveBlob(blob, name) {
 
 async function zipDownload(projects, chats, name) {
   const total = projects.reduce((n, p) => n + p.files.length, 0) + chats.length;
-  if (!total) { toast('Nothing to download yet.'); return; }
+  if (!total) { problem('Nothing to download yet: no computer has sent anything. Link a computer in Aqua Code first (Sync my projects).'); return; }
   const bar = $('progress'); bar.hidden = false; let done = 0;
   const upd = (m) => { bar.firstElementChild.style.width = Math.round(100 * done / total) + '%'; $('progress-msg').textContent = m || (done + ' of ' + total); };
   try {
@@ -204,7 +208,7 @@ async function zipDownload(projects, chats, name) {
     upd('Packing the ZIP...');
     saveBlob(await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }, (m) => { bar.firstElementChild.style.width = Math.round(m.percent) + '%'; }), name);
     toast(problems.length ? 'Downloaded with ' + problems.length + ' problem(s), see _problems.txt' : 'Downloaded ' + total + ' items');
-  } catch (e) { toast(e.message || String(e)); }
+  } catch (e) { problem(e.message || String(e)); }
   setTimeout(() => { bar.hidden = true; }, 1500);
 }
 

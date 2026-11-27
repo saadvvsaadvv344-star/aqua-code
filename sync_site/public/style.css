@@ -18,6 +18,7 @@ h1{font-size:26px;margin:0 0 10px}h2{font-size:18px;margin:26px 0 10px;color:var
 .btn.gold{background:linear-gradient(160deg,#f4f5f7,#cfd3da 60%,#8d929c);color:#13151a;border:0;font-weight:650}
 .btn.big{padding:13px 26px;font-size:17px}
 .btn.ghost{background:transparent}
+#empty{margin-bottom:16px}#empty ol{color:var(--tx);line-height:1.7;padding-left:22px}
 .err{color:var(--red);min-height:20px}.msg{min-height:20px;color:var(--mut)}.hint{font-size:13px;margin:12px 0 0}
 .summary .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
 .stats div{background:rgba(255,255,255,.05);border-radius:14px;padding:12px;text-align:center}
